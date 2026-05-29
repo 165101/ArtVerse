@@ -4,6 +4,8 @@ import com.artverse.api.dto.AuthDtos.*;
 import com.artverse.application.AuthService;
 import com.artverse.application.TokenService;
 import com.artverse.application.TokenService.TokenPair;
+import com.artverse.domain.User;
+import com.artverse.persistence.UserRepository;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -18,27 +20,24 @@ public class AuthController {
 
     private final AuthService authService;
     private final TokenService tokenService;
+    private final UserRepository userRepository;
 
     @PostMapping("/register")
     public ResponseEntity<TokenResponse> register(@RequestBody RegisterRequest req) {
         TokenPair tokens = authService.register(req.username(), req.email(), req.password());
         Claims claims = tokenService.verifyAccessToken(tokens.accessToken());
-        UserInfo user = new UserInfo(
-                Long.parseLong(claims.getSubject()),
-                claims.get("username", String.class),
-                null);
-        return ResponseEntity.ok(new TokenResponse(tokens.accessToken(), tokens.refreshToken(), user));
+        User user = userRepository.findById(Long.parseLong(claims.getSubject())).orElseThrow();
+        UserInfo info = new UserInfo(user.getId(), user.getUsername(), user.getEmail());
+        return ResponseEntity.ok(new TokenResponse(tokens.accessToken(), tokens.refreshToken(), info));
     }
 
     @PostMapping("/login")
     public ResponseEntity<TokenResponse> login(@RequestBody LoginRequest req) {
         TokenPair tokens = authService.login(req.username(), req.password());
         Claims claims = tokenService.verifyAccessToken(tokens.accessToken());
-        UserInfo user = new UserInfo(
-                Long.parseLong(claims.getSubject()),
-                claims.get("username", String.class),
-                null);
-        return ResponseEntity.ok(new TokenResponse(tokens.accessToken(), tokens.refreshToken(), user));
+        User user = userRepository.findById(Long.parseLong(claims.getSubject())).orElseThrow();
+        UserInfo info = new UserInfo(user.getId(), user.getUsername(), user.getEmail());
+        return ResponseEntity.ok(new TokenResponse(tokens.accessToken(), tokens.refreshToken(), info));
     }
 
     @PostMapping("/refresh")
