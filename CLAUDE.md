@@ -104,6 +104,9 @@ Frontend runs on `http://localhost:5173`
 - `POST /api/chapters/{id}/import-novel` - Import novel content
 - `POST /api/chapters/{id}/generate-scenes` - Generate scenes from novel
 - `POST /api/chapters/{id}/generate-manga` - Generate manga images
+- `GET/POST/DELETE /api/stories/{id}/ref-images` - Story-level reference images
+- `GET/POST/DELETE /api/chapters/{id}/ref-images` - Chapter-level reference images
+- `GET/POST/DELETE /api/stories/{id}/asset-groups/{groupId}/ref-images` - Asset group ref images
 - `GET /api/stories/{id}/asset-groups` - List asset groups for story
 
 ## Testing
@@ -155,12 +158,15 @@ Use Playwright CLI skill for browser automation testing.
 - **Get authenticated user**: Always use `(Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal()` to get current userId in controllers. Don't pass user IDs as request parameters — derive from the JWT.
 - **API key resolution for AI calls**: Call `apiKeyService.getDecryptedKey(user, provider)` to get the decrypted per-user API key. Fall back to `ArtVerseProperties` global key if user hasn't set a personal key. Never log decrypted API keys.
 - **Redis must be running**: `TokenService` blacklist operations silently fail if Redis is unreachable. Ensure Redis container is up (`docker-compose up -d redis`). JWT verification still works without Redis — only blacklist check is affected.
+- **Complete CRUD endpoint coverage**: When a controller has GET endpoints for a resource that the frontend also POSTs/DELETEs to, verify ALL HTTP methods are implemented. A missing POST handler on an existing GET route causes `NoResourceFoundException` → 500 "Internal server error". See `ReferenceImageController` — it originally only had GET, missing POST/DELETE that the frontend called.
+- **`Map.of()` returns immutable maps**: Java's `Map.of()` and `List.of()` return immutable collections. Never call `.put()` / `.add()` on them — this throws `UnsupportedOperationException` at runtime. Always use `new HashMap<>()` or `new ArrayList<>()` when you need to mutate the result later.
 
 ## Recent Fixes Summary (2026-05-29)
 
-Key patterns from 21 fixes:
-- **API contract mismatches**: Verify frontend/backend field names, paths, Content-Type, SSE event fields match exactly. Always JSON-encode SSE token data as `{"content": token}`.
+Key patterns from 22 fixes:
+- **API contract mismatches**: Verify frontend/backend field names, paths, Content-Type, SSE event fields match exactly. Always JSON-encode SSE token data as `{"content": token}`. Verify ALL HTTP methods the frontend calls are implemented on the backend (not just GET when frontend also POSTs).
 - **AgentScope Harness**: Replaced custom AI code. Use `OpenAIChatModel` (OpenAI-compatible) for DeepSeek. Filter `AGENT_RESULT` + use `AtomicBoolean` for `isLast()` events. Cancel `Flux.subscribe()` on SSE disconnect. Strip quotes from `.env` values. Wrap `.block()` in try-catch.
 - **JPA/Hibernate**: `open-in-view: false` means sessions close after `@Transactional`. Use `@JsonIgnore` on lazy fields, DTO safe-accessors, and `@Transactional` on methods with detached-entity callbacks. Jackson parses integers as `Long`.
 - **Validation**: Always validate DB CHECK constraints in service layer (400, not 500). Warn on missing API keys at startup.
 - **Cleanup**: Remove dead parameters from entire call chain (controller→service). Don't leak API keys on every request header. Use `??` not `||` for nullish values. Don't duplicate SSE event callbacks.
+- **Java immutability**: `Map.of()` / `List.of()` return immutable collections — never call `.put()` / `.add()`. Use `new HashMap<>()` for mutable maps.
