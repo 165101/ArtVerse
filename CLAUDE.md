@@ -17,7 +17,25 @@ ArtVerse is an AI-powered manga/novel generation platform with a Spring Boot bac
 - **Frontend**: React, TypeScript, Vite
 - **Database**: PostgreSQL (port 5432)
 - **Storage**: MinIO (ports 9000/9001)
-- **AI Services**: DeepSeek API (chat), Image2 API (image generation)
+- **AI Services**: DeepSeek API via AgentScope Harness (chat/text), Image2 API (image generation)
+
+## AI Architecture (AgentScope Harness)
+
+All text/chat AI uses `io.agentscope:agentscope-harness:1.1.0-RC2`:
+- `AgentScopeConfig` creates `OpenAIChatModel` bean (DeepSeek is OpenAI-compatible, base URL: `https://api.deepseek.com`)
+- `AgentScopeHarnessAgentGateway` wraps `HarnessAgent` with per-story caching, workspace context, and message compaction
+- AI entry point: `HarnessAgentGateway` interface → `streamChat()` / `generateText()`
+- Image generation (`Image2Client`) is kept separate — NOT replaced by AgentScope
+
+### Key classes
+- `io.agentscope.core.model.OpenAIChatModel` — OpenAI-compatible model adapter (works with DeepSeek)
+- `io.agentscope.harness.agent.HarnessAgent` — main agent with workspace, memory, compaction
+- `io.agentscope.core.message.Msg` / `MsgRole` — message types
+- `io.agentscope.core.agent.RuntimeContext` — per-call session context (sessionId, userId)
+- `io.agentscope.harness.agent.memory.compaction.CompactionConfig` — conversation compaction settings
+
+### Deleted files (replaced by AgentScope)
+The old AI layer has been removed: `DeepSeekClient.java`, `WebClientDeepSeekClient.java`, `DeepSeekModelAdapter.java`, `DeepSeekHarnessAgentGateway.java`, `AiMessage.java`
 
 ## Development Environment
 
@@ -102,6 +120,9 @@ Use Playwright CLI skill for browser automation testing.
 - **Jackson `@RequestBody` type mapping**: Jackson parses JSON integers as `Long`, not `Integer`. Never use `Map<String, Integer>` as `@RequestBody` — use `Map<String, Object>` and cast with `((Number) val).intValue()`. Otherwise deserialization fails silently with a 500 error.
 - **DB CHECK constraints must have service-level validation**: When a database column has a CHECK constraint (e.g. `image_count IN (4, 6, 8, 10, 12, 15, 20)`), always validate in the service layer before `save()` to return a proper 400 error instead of a 500 `DataIntegrityViolationException`.
 - **Internal method calls bypass `@Transactional` proxy**: When a controller method calls another `@Transactional` method on the same class (e.g. `setAssetGroup` calling `getAssetGroup`), the call goes directly to the method, not through Spring's proxy. If the called method accesses lazy-loaded JPA relationships, the calling method must also be annotated with `@Transactional` to keep the Hibernate session open.
+- **AgentScope Harness usage**: All text/chat AI goes through `HarnessAgentGateway` interface. Use `HarnessAgent.builder()` with `.model(openAIChatModel)`, `.workspace(path)`, `.compaction(config)` to create agents. Build one agent per story (cache by story ID). Use `RuntimeContext.builder().sessionId().userId().build()` for per-call identity. Convert `AgentMessage` to `Msg.builder().role(MsgRole.USER/ASSISTANT/SYSTEM).textContent().build()`.
+- **AgentScope model configuration**: `OpenAIChatModel.builder().apiKey().modelName().baseUrl().stream(true).build()`. For DeepSeek, base URL is `https://api.deepseek.com`. API key read from `ArtVerseProperties.deepseek.apiKey` or `DEEPSEEK_API_KEY` env var via Dotenv.
+- **Don't create custom adapters**: `OpenAIChatModel` already supports any OpenAI-compatible API. No need to write custom `ChatModel` adapters like the old `DeepSeekModelAdapter`.
 
 ## Recent Fixes (2026-05-29)
 
@@ -156,3 +177,10 @@ Use Playwright CLI skill for browser automation testing.
     - Frontend expected `{ images: [{ filename, image_path, size_kb }], max, source }` but backend returned `{ images: [{ path, url }], source }`
     - Fix: Changed `ReferenceImageController` to return `filename`, `image_path`, `size_kb` fields and include `max` field
     - Impact: Ref images list showed empty or crashed on missing fields
+16. **AgentScope Harness refactoring** (2026-05-29):
+    - Replaced all custom AI code (`DeepSeekClient`, `WebClientDeepSeekClient`, `DeepSeekModelAdapter`, `DeepSeekHarnessAgentGateway`, `AiMessage`) with `io.agentscope:agentscope-harness:1.1.0-RC2`
+    - `OpenAIChatModel` configured for DeepSeek (OpenAI-compatible) in `AgentScopeConfig`
+    - `AgentScopeHarnessAgentGateway` uses `HarnessAgent` with per-story caching, workspace context, and message compaction
+    - Image generation (`Image2Client`) kept separate — not replaced by AgentScope
+    - Dependency: `io.agentscope:agentscope-harness:1.1.0-RC2` + `io.github.cdimascio:dotenv-java:3.2.0`
+    - Removed: `io.agentscope:agentscope-spring-boot-starter`, `com.openai:openai-java`
