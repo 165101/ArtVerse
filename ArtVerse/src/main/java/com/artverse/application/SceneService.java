@@ -67,7 +67,12 @@ public class SceneService {
                 Map.of("pageCount", chapter.getImageCount(), "characterProfiles", profiles)
         );
 
-        String raw = harnessAgentGateway.generateText(request).block();
+        String raw;
+        try {
+            raw = harnessAgentGateway.generateText(request).block();
+        } catch (Exception e) {
+            throw new BusinessException(502, "AI 服务不可用: " + e.getMessage());
+        }
         if (raw == null || raw.isBlank()) {
             throw new BusinessException(502, "AI returned empty scene response");
         }

@@ -44,7 +44,6 @@ function apiHeaders(json = false): HeadersInit {
   return {
     ...(json ? { 'Content-Type': 'application/json' } : {}),
     ...(API_TOKEN ? { 'X-API-Token': API_TOKEN } : {}),
-    ...(keys.deepseekApiKey ? { 'X-DeepSeek-API-Key': keys.deepseekApiKey } : {}),
     ...(keys.imageApiKey ? { 'X-Image-API-Key': keys.imageApiKey } : {}),
   };
 }

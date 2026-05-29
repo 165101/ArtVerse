@@ -50,7 +50,12 @@ public class NovelService {
                 Map.of()
         );
 
-        String novelContent = harnessAgentGateway.generateText(request).block();
+        String novelContent;
+        try {
+            novelContent = harnessAgentGateway.generateText(request).block();
+        } catch (Exception e) {
+            throw new BusinessException(502, "AI 服务不可用: " + e.getMessage());
+        }
         if (novelContent == null || novelContent.isBlank()) {
             throw new BusinessException(502, "AI returned empty novel content");
         }

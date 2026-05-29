@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import reactor.core.Disposable;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -27,7 +28,6 @@ public class ChatService {
     private final ChapterRepository chapterRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final HarnessAgentGateway harnessAgentGateway;
-    private final RuntimeContextFactory runtimeContextFactory;
     private final ArtVerseProperties properties;
     private final ObjectMapper objectMapper;
 
@@ -61,7 +61,8 @@ public class ChatService {
         return chatMessageRepository.findByChapterIdOrderByCreatedAtAsc(chapterId);
     }
 
-    public SseEmitter streamChat(Long chapterId, String userContent, String deepSeekApiKey) {
+    @Transactional
+    public SseEmitter streamChat(Long chapterId, String userContent) {
         Chapter chapter = chapterRepository.findById(chapterId)
                 .orElseThrow(() -> new BusinessException(404, "Chapter not found"));
 
@@ -89,7 +90,7 @@ public class ChatService {
                 Map.of()
         );
 
-        harnessAgentGateway.streamChat(request)
+        Disposable subscription = harnessAgentGateway.streamChat(request)
                 .subscribe(
                         token -> {
                             try {
@@ -135,7 +136,16 @@ public class ChatService {
                         }
                 );
 
+        emitter.onCompletion(() -> {
+            if (!subscription.isDisposed()) {
+                subscription.dispose();
+            }
+        });
+
         emitter.onTimeout(() -> {
+            if (!subscription.isDisposed()) {
+                subscription.dispose();
+            }
             String content = accumulated.toString();
             if (!content.isBlank()) {
                 try {
@@ -151,6 +161,9 @@ public class ChatService {
         });
 
         emitter.onError(e -> {
+            if (!subscription.isDisposed()) {
+                subscription.dispose();
+            }
             String content = accumulated.toString();
             if (!content.isBlank()) {
                 try {

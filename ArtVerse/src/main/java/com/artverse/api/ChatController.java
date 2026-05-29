@@ -2,7 +2,6 @@ package com.artverse.api;
 
 import com.artverse.application.ChatService;
 import com.artverse.domain.ChatMessage;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -19,16 +18,14 @@ public class ChatController {
 
     @PostMapping("/chat")
     public SseEmitter chat(@PathVariable Long chapterId,
-                           @RequestBody Map<String, String> body,
-                           HttpServletRequest request) {
+                           @RequestBody Map<String, String> body) {
         String content = body.get("message");
-        String deepSeekKey = request.getHeader("X-DeepSeek-API-Key");
 
         // Save user message first
         chatService.saveUserMessage(chapterId, content);
 
         // Stream response
-        return chatService.streamChat(chapterId, content, deepSeekKey);
+        return chatService.streamChat(chapterId, content);
     }
 
     @GetMapping("/messages")

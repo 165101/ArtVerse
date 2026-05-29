@@ -123,9 +123,17 @@ Use Playwright CLI skill for browser automation testing.
 - **AgentScope Harness usage**: All text/chat AI goes through `HarnessAgentGateway` interface. Use `HarnessAgent.builder()` with `.model(openAIChatModel)`, `.workspace(path)`, `.compaction(config)` to create agents. Build one agent per story (cache by story ID). Use `RuntimeContext.builder().sessionId().userId().build()` for per-call identity. Convert `AgentMessage` to `Msg.builder().role(MsgRole.USER/ASSISTANT/SYSTEM).textContent().build()`.
 - **AgentScope model configuration**: `OpenAIChatModel.builder().apiKey().modelName().baseUrl().stream(true).build()`. For DeepSeek, base URL is `https://api.deepseek.com`. API key read from `ArtVerseProperties.deepseek.apiKey` or `DEEPSEEK_API_KEY` env var via Dotenv.
 - **Don't create custom adapters**: `OpenAIChatModel` already supports any OpenAI-compatible API. No need to write custom `ChatModel` adapters like the old `DeepSeekModelAdapter`.
-- **Streaming event filtering**: When using `HarnessAgent.stream()`, filter out `EventType.AGENT_RESULT` AND `Event.isLast()` events to avoid duplicating the full response text. AgentScope emits incremental REASONING deltas followed by a final full-text event with `isLast()=true` — only forward non-last REASONING events. The correct filter chain is: `.filter(e -> e.getType() != EventType.AGENT_RESULT && !e.isLast() && e.getMessage() != null && e.getMessage().getTextContent() != null)`.
+- **Streaming event filtering**: When using `HarnessAgent.stream()`, filter out `EventType.AGENT_RESULT` events. For `isLast()` events, use a stateful `AtomicBoolean` to track whether any token has already been emitted — only suppress `isLast()` when prior tokens exist. Unconditional `!e.isLast()` drops single-event short responses (e.g. "好"). The correct pattern: filter non-AGENT_RESULT → use `AtomicBoolean hasEmitted` → skip `isLast()` only if `hasEmitted` is true.
 - **SSE token format**: Always wrap SSE token data in JSON: `.data(objectMapper.writeValueAsString(Map.of("content", token)))`. The frontend parses `data.content` from JSON — sending raw strings silently fails during `JSON.parse()` and tokens are dropped. Only `done`/`error` events with proper JSON work without this.
 - **Dotenv-java 3.x gotcha**: `Dotenv.get()` checks system environment variables FIRST, then `.env` file entries. If a system env var `DEEPSEEK_API_KEY` exists, it takes priority over `.env`. Workaround: read `.env` file directly via `Files.lines()` and only fall back to `dotenv.get()`.
+- **Strip quotes from .env values**: `readFromEnvFile()` should strip surrounding `"` and `'` characters from extracted values. Users commonly copy-paste API keys in `KEY="value"` format from documentation. Unstripped quotes cause silent 401 auth failures.
+- **Validate API key at startup**: The AI model bean should log a visible warning if the API key is null/blank after all resolution attempts (properties → .env → dotenv). Don't silently pass null to the model builder.
+- **Cancel Reactor subscriptions on SSE disconnect**: Store the `Disposable` returned by `Flux.subscribe()` and call `subscription.dispose()` in `SseEmitter.onTimeout()`, `onError()`, and `onCompletion()` callbacks. Otherwise the AI stream continues generating tokens for a disconnected client, wasting API credits.
+- **Remove dead parameters from entire call chain**: When refactoring removes the need for a parameter, remove it from controller → service → gateway. Dead parameters mislead future maintainers into thinking the feature still works.
+- **Don't attach API keys to every request header**: `apiHeaders()` should not include auth headers that apply to a subset of endpoints. Attach per-endpoint headers locally to minimize key exposure in logs/proxies/devtools.
+- **Wrap reactive `.block()` calls**: When calling `.block()` on `Mono`/`Flux` from non-reactive services, wrap with try-catch and convert library-level exceptions to `BusinessException` with clear user-facing messages (e.g. "AI 服务不可用").
+
+## Recent Fixes (2026-05-29)
 
 ## Recent Fixes (2026-05-29)
 
@@ -207,3 +215,14 @@ Use Playwright CLI skill for browser automation testing.
 20. **`.env` file and `.gitignore`** (2026-05-29):
     - Created `ArtVerse/.env` template with `DEEPSEEK_API_KEY`, `IMAGE_API_KEY`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`
     - Created root `.gitignore` to prevent `.env` from being committed
+21. **Code review fixes — 10 issues** (2026-05-29):
+    - Fix 1: `!e.isLast()` filter dropped single-event short responses — fixed with `AtomicBoolean` hasEmitted guard
+    - Fix 2: SSE disconnect didn't cancel Reactor subscription, wasting API credits — added `Disposable.dispose()` in timeout/error/completion callbacks
+    - Fix 3: `.env` value quotes not stripped causing silent 401 — added quote stripping in `readFromEnvFile()`
+    - Fix 4: No API key validation at startup — added warn log when key is null/blank
+    - Fix 5: `deepSeekApiKey` dead parameter in `ChatService.streamChat()`/`ChatController` — removed from entire chain
+    - Fix 6: Frontend leaked API key on all request headers — removed from `apiHeaders()`, no longer attached globally
+    - Fix 7: `generateText()` callers lacked error wrapping — added try-catch → `BusinessException(502)` in SceneService/NovelService
+    - Fix 8: `RuntimeContextFactory` injected but never called — removed dead field from ChatService
+    - Fix 9: Detached Chapter entity in SSE async callbacks — added `@Transactional` to `streamChat()`
+    - Fix 10: `DEFAULT_WORKSPACE` relative path depended on JVM working dir — changed to absolute path based on `user.dir`

@@ -17,7 +17,7 @@ import java.nio.file.Paths;
 @Configuration
 public class AgentScopeConfig {
 
-    private static final Path DEFAULT_WORKSPACE = Paths.get(".agentscope/workspace");
+    private static final Path DEFAULT_WORKSPACE = Paths.get(System.getProperty("user.dir", "."), ".agentscope/workspace");
 
     @Bean
     public Dotenv dotenv() {
@@ -40,7 +40,16 @@ public class AgentScopeConfig {
                     .filter(line -> line.startsWith(key + "=") || line.startsWith(key + " ="))
                     .map(line -> {
                         int eq = line.indexOf('=');
-                        return line.substring(eq + 1).trim();
+                        String value = line.substring(eq + 1).trim();
+                        // Strip surrounding quotes (common when copying from docs)
+                        if (value.length() >= 2) {
+                            char first = value.charAt(0);
+                            char last = value.charAt(value.length() - 1);
+                            if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+                                value = value.substring(1, value.length() - 1);
+                            }
+                        }
+                        return value;
                     })
                     .findFirst()
                     .orElse(null);
@@ -97,6 +106,9 @@ public class AgentScopeConfig {
             if (apiKey == null || apiKey.isBlank()) {
                 apiKey = dotenv.get("DEEPSEEK_API_KEY");
             }
+        }
+        if (apiKey == null || apiKey.isBlank()) {
+            log.warn("DeepSeek API key is not configured. Set DEEPSEEK_API_KEY in .env or application.yml. AI features will fail until a key is provided.");
         }
         log.info("DeepSeek model configured with key: {}", maskKey(apiKey));
         return OpenAIChatModel.builder()

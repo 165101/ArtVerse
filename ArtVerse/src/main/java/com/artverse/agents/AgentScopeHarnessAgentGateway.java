@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @Component
@@ -44,11 +45,22 @@ public class AgentScopeHarnessAgentGateway implements HarnessAgentGateway {
         RuntimeContext ctx = buildRuntimeContext(request);
         List<Msg> messages = convertMessages(request);
 
+        AtomicBoolean hasEmitted = new AtomicBoolean(false);
+
         return agent.stream(messages, ctx)
                 .filter(e -> e.getType() != EventType.AGENT_RESULT
-                        && !e.isLast()
                         && e.getMessage() != null
                         && e.getMessage().getTextContent() != null)
+                .filter(e -> {
+                    if (e.isLast() && hasEmitted.get()) {
+                        return false;
+                    }
+                    String text = e.getMessage().getTextContent();
+                    if (text != null && !text.isEmpty()) {
+                        hasEmitted.set(true);
+                    }
+                    return true;
+                })
                 .map(e -> e.getMessage().getTextContent());
     }
 
