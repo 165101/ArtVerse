@@ -1,0 +1,52 @@
+package com.artverse.domain;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+
+@Entity
+@Table(name = "stories")
+@Getter
+@Setter
+public class Story {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private String title;
+
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
+    @Column(name = "cover_image", length = 500)
+    private String coverImage;
+
+    @Column(name = "ref_image", length = 500)
+    private String refImage;
+
+    @Column(name = "character_profiles", columnDefinition = "TEXT")
+    private String characterProfiles;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private OffsetDateTime createdAt;
+
+    @OneToMany(mappedBy = "story", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("chapterNumber ASC")
+    private List<Chapter> chapters = new ArrayList<>();
+
+    @OneToMany(mappedBy = "story", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<StoryAssetGroup> assetGroups = new LinkedHashSet<>();
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = OffsetDateTime.now();
+    }
+}

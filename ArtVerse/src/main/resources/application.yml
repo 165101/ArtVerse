@@ -1,0 +1,62 @@
+server:
+  port: 8000
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/manga_novel
+    username: postgres
+    password: postgres
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+
+artverse:
+  cors-origins:
+    - http://localhost:5173
+    - http://127.0.0.1:5173
+  api-token: ""
+  storage:
+    root: ./manga_outputs
+  upload:
+    max-image-bytes: 10485760
+  import:
+    max-zip-bytes: 524288000
+    max-novel-chars: 50000
+  character:
+    max-chars: 20000
+  ref:
+    max-images-per-level: 4
+  manga:
+    default-image-count: 10
+    allowed-image-counts:
+      - 4
+      - 6
+      - 8
+      - 10
+      - 12
+      - 15
+      - 20
+  deepseek:
+    base-url: https://api.deepseek.com
+    model: deepseek-v4-flash
+    api-key: ""
+  image:
+    base-url: https://api.duojie.games/v1
+    model: gpt-image-2
+    size: 1024x1536
+    api-key: ""
+  minio:
+    endpoint: http://localhost:9000
+    bucket: artverse-manga
+    region: us-east-1
+    access-key: "minioadmin"
+    secret-key: "minioadmin"
+    secure: false
+    public-base-url: ""
+    presigned-url-expire-seconds: 3600

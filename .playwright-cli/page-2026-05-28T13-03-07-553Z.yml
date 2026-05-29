@@ -1,0 +1,826 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - link "AgentScope Java" [ref=e5] [cursor=pointer]:
+          - /url: ../../en/intro.html
+          - generic [ref=e6]:
+            - text: AgentScope
+            - text: Java
+        - navigation "Documentation sections" [ref=e8]:
+          - generic [ref=e9]:
+            - link "首页" [ref=e10] [cursor=pointer]:
+              - /url: ../intro.html
+            - link "Harness" [ref=e11] [cursor=pointer]:
+              - /url: overview.html
+            - link "Agent" [ref=e12] [cursor=pointer]:
+              - /url: ../quickstart/installation.html
+            - link "集成" [ref=e13] [cursor=pointer]:
+              - /url: ../integration/overview.html
+            - link "博客" [ref=e14] [cursor=pointer]:
+              - /url: ../blogs/index.html
+            - link "社区" [ref=e15] [cursor=pointer]:
+              - /url: ../community/overview.html
+      - generic "Site actions" [ref=e16]:
+        - search [ref=e17]:
+          - searchbox "Search" [ref=e18]
+          - button "Search" [ref=e19] [cursor=pointer]:
+            - img [ref=e20]
+        - button "Toggle Light / Dark / Auto color theme" [ref=e24] [cursor=pointer]:
+          - img [ref=e25]
+        - button "中文" [ref=e29] [cursor=pointer]:
+          - generic [ref=e30]: 中文
+  - link "Skip to content" [ref=e31] [cursor=pointer]:
+    - /url: "#furo-main-content"
+  - generic [ref=e32]:
+    - complementary [ref=e33]:
+      - generic [ref=e37]:
+        - heading "Harness" [ref=e38]
+        - list [ref=e39]:
+          - listitem [ref=e40]:
+            - text: 核心
+            - link "概览" [ref=e41] [cursor=pointer]:
+              - /url: overview.html
+          - listitem [ref=e42]:
+            - link "架构" [ref=e43] [cursor=pointer]:
+              - /url: architecture.html
+          - listitem [ref=e44]:
+            - link "工作区" [ref=e45] [cursor=pointer]:
+              - /url: workspace.html
+          - listitem [ref=e46]:
+            - link "文件系统" [ref=e47] [cursor=pointer]:
+              - /url: filesystem.html
+          - listitem [ref=e48]:
+            - link "会话" [ref=e49] [cursor=pointer]:
+              - /url: session.html
+          - listitem [ref=e50]:
+            - link "记忆" [ref=e51] [cursor=pointer]:
+              - /url: memory.html
+          - listitem [ref=e52]:
+            - link "工具" [ref=e53] [cursor=pointer]:
+              - /url: tool.html
+          - listitem [ref=e54]:
+            - link "技能" [ref=e55] [cursor=pointer]:
+              - /url: skill.html
+          - listitem [ref=e56]:
+            - text: 快速开始
+            - link "子 Agent" [ref=e57] [cursor=pointer]:
+              - /url: "#"
+          - listitem [ref=e58]:
+            - text: 沙箱
+            - link "子 Agent 流式" [ref=e59] [cursor=pointer]:
+              - /url: streaming.html
+          - listitem [ref=e60]:
+            - text: 示例
+            - link "快速开始" [ref=e61] [cursor=pointer]:
+              - /url: quickstart/index.html
+          - listitem [ref=e62]:
+            - link "沙箱" [ref=e63] [cursor=pointer]:
+              - /url: sandbox/index.html
+          - listitem [ref=e64]:
+            - link "AgentRun 后端" [ref=e65] [cursor=pointer]:
+              - /url: sandbox/agentrun.html
+          - listitem [ref=e66]:
+            - link "示例" [ref=e67] [cursor=pointer]:
+              - /url: example/index.html
+    - generic [ref=e68]:
+      - generic [ref=e69]:
+        - generic [ref=e70]:
+          - generic [ref=e71]:
+            - link "View this page" [ref=e73] [cursor=pointer]:
+              - /url: https://github.com/agentscope-ai/agentscope-java/blob/master/docs/zh/harness/subagent.md?plain=true
+              - img [ref=e74]
+              - generic [ref=e76]: View this page
+            - img [ref=e79] [cursor=pointer]
+          - main [ref=e81]:
+            - generic [ref=e82]:
+              - heading "子 Agent（Subagent）" [level=1] [ref=e83]
+              - generic [ref=e84]:
+                - heading "作用" [level=2] [ref=e85]
+                - paragraph [ref=e86]:
+                  - text: Subagent 让主 agent 把「可独立处理、上下文重、可并行」的任务委派出去，避免主线程膨胀。
+                  - text: 每个 subagent 都是一个临时
+                  - code [ref=e87]: HarnessAgent
+                  - text: （或 remote stub）实例，拥有独立子会话，最终通过工具结果回传。
+              - separator [ref=e88]
+              - generic [ref=e89]:
+                - heading "何时启用" [level=2] [ref=e90]
+                - paragraph [ref=e91]:
+                  - text: 当
+                  - code [ref=e92]: HarnessAgent.build()
+                  - text: 满足以下条件时，才会装载 subagent 能力：
+                - list [ref=e93]:
+                  - listitem [ref=e94]:
+                    - paragraph [ref=e95]:
+                      - text: 当前 agent
+                      - strong [ref=e96]: 不是
+                      - text: leaf subagent
+                  - listitem [ref=e97]:
+                    - paragraph [ref=e98]:
+                      - text: 没有
+                      - code [ref=e99]: disableSubagents()
+                  - listitem [ref=e100]:
+                    - paragraph [ref=e101]:
+                      - text: 已配置
+                      - code [ref=e102]: model
+                - paragraph [ref=e103]:
+                  - text: 满足后会注册
+                  - code [ref=e104]: SubagentsHook
+                  - text: （priority=80），并通过 hook 暴露：
+                - list [ref=e105]:
+                  - listitem [ref=e106]:
+                    - paragraph [ref=e107]:
+                      - code [ref=e108]: agent_spawn
+                      - text: /
+                      - code [ref=e109]: agent_send
+                      - text: /
+                      - code [ref=e110]: agent_list
+                  - listitem [ref=e111]:
+                    - paragraph [ref=e112]:
+                      - code [ref=e113]: task_output
+                      - text: /
+                      - code [ref=e114]: task_cancel
+                      - text: /
+                      - code [ref=e115]: task_list
+                - paragraph [ref=e116]:
+                  - text: 在每轮
+                  - code [ref=e117]: PreReasoningEvent
+                  - text: ，
+                  - code [ref=e118]: SubagentsHook
+                  - text: 会向 SYSTEM 注入：
+                - list [ref=e119]:
+                  - listitem [ref=e120]:
+                    - paragraph [ref=e121]: 子 agent 使用规则
+                  - listitem [ref=e122]:
+                    - paragraph [ref=e123]:
+                      - text: 当前可用
+                      - code [ref=e124]: agent_id
+                      - text: 列表
+                  - listitem [ref=e125]:
+                    - paragraph [ref=e126]: 当前 session 的异步任务摘要（最多 10 条）
+              - separator [ref=e127]
+              - generic [ref=e128]:
+                - heading "声明来源" [level=2] [ref=e129]
+                - paragraph [ref=e130]:
+                  - code [ref=e131]: buildSubagentEntries(...)
+                  - text: 会合并四类来源：
+                - list [ref=e132]:
+                  - listitem [ref=e133]:
+                    - paragraph [ref=e134]:
+                      - text: 内置
+                      - code [ref=e135]: general-purpose
+                  - listitem [ref=e136]:
+                    - paragraph [ref=e137]:
+                      - text: 编程声明：
+                      - code [ref=e138]: builder.subagent(SubagentDeclaration)
+                  - listitem [ref=e139]:
+                    - paragraph [ref=e140]:
+                      - text: 文件声明：
+                      - code [ref=e141]: workspace/subagents/*.md
+                      - text: （
+                      - code [ref=e142]: AgentSpecLoader
+                      - text: 非递归加载）
+                  - listitem [ref=e143]:
+                    - paragraph [ref=e144]:
+                      - text: 自定义工厂：
+                      - code [ref=e145]: builder.subagentFactory(name, factory)
+              - separator [ref=e146]
+              - generic [ref=e147]:
+                - heading "声明模型（SubagentDeclaration）" [level=2] [ref=e148]
+                - paragraph [ref=e149]:
+                  - code [ref=e150]: SubagentDeclaration
+                  - text: 支持 3 种互斥来源模式：
+                - list [ref=e151]:
+                  - listitem [ref=e152]:
+                    - paragraph [ref=e153]:
+                      - strong [ref=e154]: Definition workspace 模式
+                    - list [ref=e155]:
+                      - listitem [ref=e156]:
+                        - paragraph [ref=e157]:
+                          - code [ref=e158]: workspace(path)
+                          - text: 指向定义目录（通常含
+                          - code [ref=e159]: AGENTS.md
+                          - text: ）
+                  - listitem [ref=e160]:
+                    - paragraph [ref=e161]:
+                      - strong [ref=e162]: Inline 模式
+                    - list [ref=e163]:
+                      - listitem [ref=e164]:
+                        - paragraph [ref=e165]:
+                          - code [ref=e166]: inlineAgentsBody(...)
+                          - text: 直接作为系统提示词 base
+                  - listitem [ref=e167]:
+                    - paragraph [ref=e168]:
+                      - strong [ref=e169]: Remote HTTP 模式
+                    - list [ref=e170]:
+                      - listitem [ref=e171]:
+                        - paragraph [ref=e172]:
+                          - code [ref=e173]: url(...)
+                          - text: + 可选
+                          - code [ref=e174]: headers(...)
+                          - text: ，通过 task protocol 走远端执行
+                - paragraph [ref=e175]:
+                  - text: 互斥约束（
+                  - code [ref=e176]: build()
+                  - text: 校验）：
+                - list [ref=e177]:
+                  - listitem [ref=e178]:
+                    - paragraph [ref=e179]:
+                      - code [ref=e180]: url
+                      - text: 不能与
+                      - code [ref=e181]: workspace
+                      - text: 或非空
+                      - code [ref=e182]: inlineAgentsBody
+                      - text: 同时出现
+                  - listitem [ref=e183]:
+                    - paragraph [ref=e184]:
+                      - code [ref=e185]: workspace
+                      - text: 与非空
+                      - code [ref=e186]: inlineAgentsBody
+                      - text: 不能同时出现
+              - separator [ref=e187]
+              - generic [ref=e188]:
+                - heading "运行时工作区五行判定表" [level=2] [ref=e189]
+                - paragraph [ref=e190]:
+                  - code [ref=e191]: WorkspaceMode
+                  - text: 决定 runtime workspace root：
+                - table [ref=e193]:
+                  - rowgroup [ref=e194]:
+                    - row "情形 sysPrompt base 来源 runtime workspace" [ref=e195]:
+                      - columnheader "情形" [ref=e196]:
+                        - paragraph [ref=e197]: 情形
+                      - columnheader "sysPrompt base 来源" [ref=e198]:
+                        - paragraph [ref=e199]: sysPrompt base 来源
+                      - columnheader "runtime workspace" [ref=e200]:
+                        - paragraph [ref=e201]: runtime workspace
+                  - rowgroup [ref=e202]:
+                    - row "内置 general-purpose（固定共享） 无额外 base（只拼 Subagent Context；AGENTS.md 仍会由 WorkspaceContextHook 注入） mainWorkspace" [ref=e203]:
+                      - cell "内置 general-purpose（固定共享）" [ref=e204]:
+                        - paragraph [ref=e205]:
+                          - text: 内置
+                          - code [ref=e206]: general-purpose
+                          - text: （固定共享）
+                      - cell "无额外 base（只拼 Subagent Context；AGENTS.md 仍会由 WorkspaceContextHook 注入）" [ref=e207]:
+                        - paragraph [ref=e208]:
+                          - text: 无额外 base（只拼 Subagent Context；
+                          - code [ref=e209]: AGENTS.md
+                          - text: 仍会由 WorkspaceContextHook 注入）
+                      - cell "mainWorkspace" [ref=e210]:
+                        - paragraph [ref=e211]:
+                          - code [ref=e212]: mainWorkspace
+                    - row "workspace.path + ISOLATED <workspace.path>/AGENTS.md（无则空） workspace.path" [ref=e213]:
+                      - cell "workspace.path + ISOLATED" [ref=e214]:
+                        - paragraph [ref=e215]:
+                          - code [ref=e216]: workspace.path
+                          - text: +
+                          - code [ref=e217]: ISOLATED
+                      - cell "<workspace.path>/AGENTS.md（无则空）" [ref=e218]:
+                        - paragraph [ref=e219]:
+                          - code [ref=e220]: <workspace.path>/AGENTS.md
+                          - text: （无则空）
+                      - cell "workspace.path" [ref=e221]:
+                        - paragraph [ref=e222]:
+                          - code [ref=e223]: workspace.path
+                    - row "workspace.path + SHARED <workspace.path>/AGENTS.md（无则空） mainWorkspace" [ref=e224]:
+                      - cell "workspace.path + SHARED" [ref=e225]:
+                        - paragraph [ref=e226]:
+                          - code [ref=e227]: workspace.path
+                          - text: +
+                          - code [ref=e228]: SHARED
+                      - cell "<workspace.path>/AGENTS.md（无则空）" [ref=e229]:
+                        - paragraph [ref=e230]:
+                          - code [ref=e231]: <workspace.path>/AGENTS.md
+                          - text: （无则空）
+                      - cell "mainWorkspace" [ref=e232]:
+                        - paragraph [ref=e233]:
+                          - code [ref=e234]: mainWorkspace
+                    - row "无 workspace.path + ISOLATED（默认） inlineAgentsBody / markdown body mainWorkspace/agents/<name>/workspace（自动创建）" [ref=e235]:
+                      - cell "无 workspace.path + ISOLATED（默认）" [ref=e236]:
+                        - paragraph [ref=e237]:
+                          - text: 无
+                          - code [ref=e238]: workspace.path
+                          - text: +
+                          - code [ref=e239]: ISOLATED
+                          - text: （默认）
+                      - cell "inlineAgentsBody / markdown body" [ref=e240]:
+                        - paragraph [ref=e241]:
+                          - code [ref=e242]: inlineAgentsBody
+                          - text: / markdown body
+                      - cell "mainWorkspace/agents/<name>/workspace（自动创建）" [ref=e243]:
+                        - paragraph [ref=e244]:
+                          - code [ref=e245]: mainWorkspace/agents/<name>/workspace
+                          - text: （自动创建）
+                    - row "无 workspace.path + SHARED inlineAgentsBody / markdown body mainWorkspace" [ref=e246]:
+                      - cell "无 workspace.path + SHARED" [ref=e247]:
+                        - paragraph [ref=e248]:
+                          - text: 无
+                          - code [ref=e249]: workspace.path
+                          - text: +
+                          - code [ref=e250]: SHARED
+                      - cell "inlineAgentsBody / markdown body" [ref=e251]:
+                        - paragraph [ref=e252]:
+                          - code [ref=e253]: inlineAgentsBody
+                          - text: / markdown body
+                      - cell "mainWorkspace" [ref=e254]:
+                        - paragraph [ref=e255]:
+                          - code [ref=e256]: mainWorkspace
+                - paragraph [ref=e257]: 补充：
+                - list [ref=e258]:
+                  - listitem [ref=e259]:
+                    - paragraph [ref=e260]:
+                      - code [ref=e261]: tools
+                      - text: 是
+                      - strong [ref=e262]: 继承工具的 allowlist
+                      - text: ：仅过滤父 toolkit，不影响子 agent 后续自动注册的本地工具
+                  - listitem [ref=e263]:
+                    - paragraph [ref=e264]: 同一个 definition workspace 可被多个声明复用
+                  - listitem [ref=e265]:
+                    - paragraph [ref=e266]:
+                      - code [ref=e267]: workspace.path
+                      - text: 相对路径会按
+                      - code [ref=e268]: mainWorkspace.resolve(...).normalize()
+                      - text: 解析
+              - separator [ref=e269]
+              - generic [ref=e270]:
+                - heading "声明文件（workspace/subagents/<id>.md）" [level=2] [ref=e271]:
+                  - text: 声明文件（
+                  - code [ref=e272]: workspace/subagents/<id>.md
+                  - text: ）
+                - paragraph [ref=e273]:
+                  - text: 文件名（去掉
+                  - code [ref=e274]: .md
+                  - text: ）就是
+                  - code [ref=e275]: agent_id
+                  - text: ，不从 front matter 读取
+                  - code [ref=e276]: name
+                  - text: 。
+                - generic [ref=e278]:
+                  - generic [ref=e279]: "--- description: 代码评审专家 workspace: mode: isolated # isolated | shared，默认 isolated path: ./defs/reviewer # 可选；相对 mainWorkspace 或绝对路径 model: openai:gpt-4o-mini # 可选 maxIters: 8 # 可选，默认 10 tools: [read_file, grep_files] # 可选 --- 你是一个专注代码评审的子 agent。"
+                  - button "Copy to clipboard" [ref=e280] [cursor=pointer]:
+                    - img "Copy to clipboard" [ref=e281]
+                - paragraph [ref=e285]:
+                  - text: 解析规则（
+                  - code [ref=e286]: AgentSpecLoader
+                  - text: ）：
+                - list [ref=e287]:
+                  - listitem [ref=e288]:
+                    - paragraph [ref=e289]:
+                      - text: 必填：
+                      - code [ref=e290]: description
+                  - listitem [ref=e291]:
+                    - paragraph [ref=e292]:
+                      - text: 仅扫描
+                      - code [ref=e293]: subagents/
+                      - text: 目录
+                      - strong [ref=e294]: 第一层
+                      - code [ref=e295]: .md
+                      - text: 文件（非递归）
+                  - listitem [ref=e296]:
+                    - paragraph [ref=e297]:
+                      - text: 如果配置了
+                      - code [ref=e298]: workspace.path
+                      - text: 且 body 非空：会记录 warning，body 被忽略
+                  - listitem [ref=e299]:
+                    - paragraph [ref=e300]:
+                      - text: markdown 声明当前不解析
+                      - code [ref=e301]: url/headers
+                      - text: （remote 声明建议走编程 API）
+              - separator [ref=e302]
+              - generic [ref=e303]:
+                - heading "编程式配置" [level=2] [ref=e304]
+                - generic [ref=e306]:
+                  - generic [ref=e307]: HarnessAgent.builder() .name("orchestrator") .model(model) .workspace(workspace) .subagent(SubagentDeclaration.builder() .name("reviewer") .description("代码审查专家") .workspace(Path.of("./defs/reviewer")) .workspaceMode(WorkspaceMode.ISOLATED) .model("qwen3-max") .maxIters(8) .tools(List.of("read_file", "grep_files")) .build()) .subagent(SubagentDeclaration.builder() .name("remote-researcher") .description("远端调研子 agent") .url("http://agent-task-server:8080") .headers(Map.of("Authorization", "Bearer xxx")) .build()) .build();
+                  - button "Copy to clipboard" [ref=e308] [cursor=pointer]:
+                    - img "Copy to clipboard" [ref=e309]
+              - separator [ref=e313]
+              - generic [ref=e314]:
+                - heading "内置 general-purpose" [level=2] [ref=e315]:
+                  - text: 内置
+                  - code [ref=e316]: general-purpose
+                - paragraph [ref=e317]:
+                  - text: 内置
+                  - code [ref=e318]: general-purpose
+                  - text: 不需要写声明文件，会始终加入 entry 列表。
+                  - text: 它的目标是「能力镜像主 agent」，核心行为：
+                - list [ref=e319]:
+                  - listitem [ref=e320]:
+                    - paragraph [ref=e321]:
+                      - text: 共享主 workspace（
+                      - code [ref=e322]: SHARED
+                      - text: 语义）
+                  - listitem [ref=e323]:
+                    - paragraph [ref=e324]: 继承并镜像主 agent 的：
+                    - list [ref=e325]:
+                      - listitem [ref=e326]:
+                        - paragraph [ref=e327]: toolkit（父工具）
+                      - listitem [ref=e328]:
+                        - paragraph [ref=e329]: hooks
+                      - listitem [ref=e330]:
+                        - paragraph [ref=e331]: execution config
+                      - listitem [ref=e332]:
+                        - paragraph [ref=e333]: compaction / toolResultEviction
+                      - listitem [ref=e334]:
+                        - paragraph [ref=e335]: additional context files / maxContextTokens
+                      - listitem [ref=e336]:
+                        - paragraph [ref=e337]: 各类 disable 开关
+                  - listitem [ref=e338]:
+                    - paragraph [ref=e339]: 固定是 leaf subagent（不能继续 spawn）
+              - separator [ref=e340]
+              - generic [ref=e341]:
+                - heading "防递归与深度保护" [level=2] [ref=e342]
+                - paragraph [ref=e343]: 双保险：
+                - list [ref=e344]:
+                  - listitem [ref=e345]:
+                    - paragraph [ref=e346]:
+                      - text: 所有通过声明/内置生成的子 agent 都会
+                      - code [ref=e347]: asLeafSubagent()
+                      - text: ，leaf 不再注册
+                      - code [ref=e348]: SubagentsHook
+                  - listitem [ref=e349]:
+                    - paragraph [ref=e350]:
+                      - code [ref=e351]: AgentSpawnTool
+                      - text: 还有动态深度上限
+                      - code [ref=e352]: MAX_SPAWN_DEPTH = 3
+              - separator [ref=e353]
+              - generic [ref=e354]:
+                - heading "RuntimeContext 透传" [level=2] [ref=e355]
+                - paragraph [ref=e356]:
+                  - code [ref=e357]: agent_spawn
+                  - text: /
+                  - code [ref=e358]: agent_send
+                  - text: 调用子 agent 时：
+                - list [ref=e359]:
+                  - listitem [ref=e360]:
+                    - paragraph [ref=e361]:
+                      - text: 子会话
+                      - code [ref=e362]: session_id
+                      - text: 为新值（
+                      - code [ref=e363]: sub-<uuid>
+                      - text: ）
+                  - listitem [ref=e364]:
+                    - paragraph [ref=e365]:
+                      - code [ref=e366]: userId
+                      - text: 从父
+                      - code [ref=e367]: RuntimeContext
+                      - text: 透传给子
+                      - code [ref=e368]: RuntimeContext
+                - paragraph [ref=e369]: 这样可保持 USER 维度隔离键一致（例如 namespace/sandbox 隔离依赖 userId 的场景）。
+              - separator [ref=e370]
+              - generic [ref=e371]:
+                - heading "调用工具与关键参数" [level=2] [ref=e372]
+                - table [ref=e374]:
+                  - rowgroup [ref=e375]:
+                    - row "工具 作用 关键参数" [ref=e376]:
+                      - columnheader "工具" [ref=e377]:
+                        - paragraph [ref=e378]: 工具
+                      - columnheader "作用" [ref=e379]:
+                        - paragraph [ref=e380]: 作用
+                      - columnheader "关键参数" [ref=e381]:
+                        - paragraph [ref=e382]: 关键参数
+                  - rowgroup [ref=e383]:
+                    - row "agent_spawn 生成子 agent，可同步/异步执行首条任务 agent_id 必填；task 可选；label 可选；timeout_seconds 默认 30，0=后台，最大 600" [ref=e384]:
+                      - cell "agent_spawn" [ref=e385]:
+                        - paragraph [ref=e386]:
+                          - code [ref=e387]: agent_spawn
+                      - cell "生成子 agent，可同步/异步执行首条任务" [ref=e388]:
+                        - paragraph [ref=e389]: 生成子 agent，可同步/异步执行首条任务
+                      - cell "agent_id 必填；task 可选；label 可选；timeout_seconds 默认 30，0=后台，最大 600" [ref=e390]:
+                        - paragraph [ref=e391]:
+                          - code [ref=e392]: agent_id
+                          - text: 必填；
+                          - code [ref=e393]: task
+                          - text: 可选；
+                          - code [ref=e394]: label
+                          - text: 可选；
+                          - code [ref=e395]: timeout_seconds
+                          - text: 默认 30，
+                          - code [ref=e396]: "0"
+                          - text: =后台，最大 600
+                    - row "agent_send 给已有子 agent 发后续消息 agent_key 或 label 二选一；message 必填；timeout_seconds 规则同上" [ref=e397]:
+                      - cell "agent_send" [ref=e398]:
+                        - paragraph [ref=e399]:
+                          - code [ref=e400]: agent_send
+                      - cell "给已有子 agent 发后续消息" [ref=e401]:
+                        - paragraph [ref=e402]: 给已有子 agent 发后续消息
+                      - cell "agent_key 或 label 二选一；message 必填；timeout_seconds 规则同上" [ref=e403]:
+                        - paragraph [ref=e404]:
+                          - code [ref=e405]: agent_key
+                          - text: 或
+                          - code [ref=e406]: label
+                          - text: 二选一；
+                          - code [ref=e407]: message
+                          - text: 必填；
+                          - code [ref=e408]: timeout_seconds
+                          - text: 规则同上
+                    - row "agent_list 列当前活跃子 agent 无" [ref=e409]:
+                      - cell "agent_list" [ref=e410]:
+                        - paragraph [ref=e411]:
+                          - code [ref=e412]: agent_list
+                      - cell "列当前活跃子 agent" [ref=e413]:
+                        - paragraph [ref=e414]: 列当前活跃子 agent
+                      - cell "无" [ref=e415]:
+                        - paragraph [ref=e416]: 无
+                    - row "task_output 查询/等待后台任务结果 task_id、block（默认 true，建议查状态用 false）、timeout 默认 30000ms，最大 600000ms" [ref=e417]:
+                      - cell "task_output" [ref=e418]:
+                        - paragraph [ref=e419]:
+                          - code [ref=e420]: task_output
+                      - cell "查询/等待后台任务结果" [ref=e421]:
+                        - paragraph [ref=e422]: 查询/等待后台任务结果
+                      - cell "task_id、block（默认 true，建议查状态用 false）、timeout 默认 30000ms，最大 600000ms" [ref=e423]:
+                        - paragraph [ref=e424]:
+                          - code [ref=e425]: task_id
+                          - text: 、
+                          - code [ref=e426]: block
+                          - text: （默认 true，建议查状态用 false）、
+                          - code [ref=e427]: timeout
+                          - text: 默认 30000ms，最大 600000ms
+                    - row "task_cancel 取消任务 task_id" [ref=e428]:
+                      - cell "task_cancel" [ref=e429]:
+                        - paragraph [ref=e430]:
+                          - code [ref=e431]: task_cancel
+                      - cell "取消任务" [ref=e432]:
+                        - paragraph [ref=e433]: 取消任务
+                      - cell "task_id" [ref=e434]:
+                        - paragraph [ref=e435]:
+                          - code [ref=e436]: task_id
+                    - row "task_list 列当前 session 任务 status_filter（running/completed/failed/cancelled/all）" [ref=e437]:
+                      - cell "task_list" [ref=e438]:
+                        - paragraph [ref=e439]:
+                          - code [ref=e440]: task_list
+                      - cell "列当前 session 任务" [ref=e441]:
+                        - paragraph [ref=e442]: 列当前 session 任务
+                      - cell "status_filter（running/completed/failed/cancelled/all）" [ref=e443]:
+                        - paragraph [ref=e444]:
+                          - code [ref=e445]: status_filter
+                          - text: （running/completed/failed/cancelled/all）
+                - paragraph [ref=e446]: 注意：
+                - list [ref=e447]:
+                  - listitem [ref=e448]:
+                    - paragraph [ref=e449]:
+                      - code [ref=e450]: agent_send
+                      - text: 的
+                      - code [ref=e451]: agent_key
+                      - text: 必须使用
+                      - code [ref=e452]: agent_spawn
+                      - text: 返回值中的完整
+                      - code [ref=e453]: "agent_key: ..."
+                      - text: （不是
+                      - code [ref=e454]: agent_id
+                      - text: /
+                      - code [ref=e455]: session_id
+                      - text: /
+                      - code [ref=e456]: task_id
+                      - text: ）
+                  - listitem [ref=e457]:
+                    - paragraph [ref=e458]:
+                      - text: 异步任务刚创建时不要立即轮询；优先先返回用户，再用
+                      - code [ref=e459]: task_output(block=false)
+                      - text: 或
+                      - code [ref=e460]: task_list
+                      - text: 查最新状态
+              - separator [ref=e461]
+              - generic [ref=e462]:
+                - heading "异步任务生命周期与存储" [level=2] [ref=e463]
+                - paragraph [ref=e464]:
+                  - text: 默认情况下，主 agent 使用
+                  - code [ref=e465]: WorkspaceTaskRepository
+                  - text: （除非显式
+                  - code [ref=e466]: taskRepository(...)
+                  - text: 覆盖）。
+                - paragraph [ref=e467]: 生命周期（简化）：
+                - list [ref=e468]:
+                  - listitem [ref=e469]:
+                    - paragraph [ref=e470]:
+                      - code [ref=e471]: putTask(...)
+                      - text: 写入
+                      - code [ref=e472]: TaskRecord(PENDING)
+                      - text: 到 workspace
+                  - listitem [ref=e473]:
+                    - paragraph [ref=e474]: 提交本地执行 future（local 或 remote）
+                  - listitem [ref=e475]:
+                    - paragraph [ref=e476]:
+                      - text: 执行中更新为
+                      - code [ref=e477]: RUNNING
+                  - listitem [ref=e478]:
+                    - paragraph [ref=e479]:
+                      - text: 结束写入
+                      - code [ref=e480]: COMPLETED / FAILED / CANCELLED
+                - paragraph [ref=e481]: 存储分层：
+                - list [ref=e482]:
+                  - listitem [ref=e483]:
+                    - paragraph [ref=e484]:
+                      - text: 内存层：
+                      - code [ref=e485]: localTasks
+                      - text: （本节点加速句柄，重启丢失）
+                  - listitem [ref=e486]:
+                    - paragraph [ref=e487]:
+                      - text: 持久层：
+                      - code [ref=e488]: agents/<parentAgentId>/tasks/<sessionId>.json
+                      - text: （状态真源）
+              - separator [ref=e489]
+              - generic [ref=e490]:
+                - heading "分布式语义" [level=2] [ref=e491]
+                - list [ref=e492]:
+                  - listitem [ref=e493]:
+                    - paragraph [ref=e494]: 任务执行粘在创建节点，但任意节点都可通过 workspace 读取状态
+                  - listitem [ref=e495]:
+                    - paragraph [ref=e496]:
+                      - code [ref=e497]: task_output(block=true)
+                      - text: 在跨节点场景下会优雅降级，不会无休止阻塞
+                  - listitem [ref=e498]:
+                    - paragraph [ref=e499]:
+                      - code [ref=e500]: task_cancel
+                      - text: 会把
+                      - code [ref=e501]: cancelRequested=true
+                      - text: 持久化；执行节点轮询该标记后中止
+                  - listitem [ref=e502]:
+                    - paragraph [ref=e503]:
+                      - text: orphan sweeper 会把长时间无心跳的本地任务标记为
+                      - code [ref=e504]: FAILED
+                      - text: （remote transport 任务不走该判定）
+                - paragraph [ref=e505]: 与 filesystem 模式关系：
+                - table [ref=e507]:
+                  - rowgroup [ref=e508]:
+                    - row "模式 任务路径 agents/<agentId>/tasks/ 可见性" [ref=e509]:
+                      - columnheader "模式" [ref=e510]:
+                        - paragraph [ref=e511]: 模式
+                      - columnheader "任务路径 agents/<agentId>/tasks/ 可见性" [ref=e512]:
+                        - paragraph [ref=e513]:
+                          - text: 任务路径
+                          - code [ref=e514]: agents/<agentId>/tasks/
+                          - text: 可见性
+                  - rowgroup [ref=e515]:
+                    - row "RemoteFilesystemSpec 路由到共享远端存储，多节点可见" [ref=e516]:
+                      - cell "RemoteFilesystemSpec" [ref=e517]:
+                        - paragraph [ref=e518]:
+                          - code [ref=e519]: RemoteFilesystemSpec
+                      - cell "路由到共享远端存储，多节点可见" [ref=e520]:
+                        - paragraph [ref=e521]: 路由到共享远端存储，多节点可见
+                    - row "SandboxFilesystemSpec 走沙箱文件系统与沙箱状态持久化" [ref=e522]:
+                      - cell "SandboxFilesystemSpec" [ref=e523]:
+                        - paragraph [ref=e524]:
+                          - code [ref=e525]: SandboxFilesystemSpec
+                      - cell "走沙箱文件系统与沙箱状态持久化" [ref=e526]:
+                        - paragraph [ref=e527]: 走沙箱文件系统与沙箱状态持久化
+                    - row "LocalFilesystemSpec / 默认本地 本机本地可见" [ref=e528]:
+                      - cell "LocalFilesystemSpec / 默认本地" [ref=e529]:
+                        - paragraph [ref=e530]:
+                          - code [ref=e531]: LocalFilesystemSpec
+                          - text: / 默认本地
+                      - cell "本机本地可见" [ref=e532]:
+                        - paragraph [ref=e533]: 本机本地可见
+              - separator [ref=e534]
+              - generic [ref=e535]:
+                - heading "Remote subagent 行为" [level=2] [ref=e536]
+                - paragraph [ref=e537]:
+                  - text: 当声明配置
+                  - code [ref=e538]: url(...)
+                  - text: 时：
+                - list [ref=e539]:
+                  - listitem [ref=e540]:
+                    - paragraph [ref=e541]:
+                      - text: 工厂返回
+                      - code [ref=e542]: RemoteSubagentStub
+                      - text: （占位，不做本地真实推理）
+                  - listitem [ref=e543]:
+                    - paragraph [ref=e544]:
+                      - text: 实际执行通过
+                      - code [ref=e545]: TaskRunSpec.RemoteTaskRunSpec
+                      - text: +
+                      - code [ref=e546]: AgentProtocolTaskClient
+                      - text: 委派到远端 task HTTP 服务
+                  - listitem [ref=e547]:
+                    - paragraph [ref=e548]:
+                      - text: 可同步（
+                      - code [ref=e549]: timeout_seconds>0
+                      - text: ）或异步（
+                      - code [ref=e550]: timeout_seconds=0
+                      - text: ）
+              - separator [ref=e551]
+              - generic [ref=e552]:
+                - heading "实践建议" [level=2] [ref=e553]
+                - list [ref=e554]:
+                  - listitem [ref=e555]:
+                    - paragraph [ref=e556]:
+                      - code [ref=e557]: description
+                      - text: 要写清「何时使用 / 输出格式 / 禁止事项」，这是主模型是否委派的关键依据
+                  - listitem [ref=e558]:
+                    - paragraph [ref=e559]:
+                      - text: 子 agent
+                      - code [ref=e560]: maxIters
+                      - text: 通常设得比主 agent 小，避免子线程吞噬过多 token
+                  - listitem [ref=e561]:
+                    - paragraph [ref=e562]:
+                      - text: 会话压缩或恢复后，先用
+                      - code [ref=e563]: task_list()
+                      - text: 恢复任务全量状态，再做单任务查询
+              - separator [ref=e564]
+              - generic [ref=e565]:
+                - heading "相关文档" [level=2] [ref=e566]
+                - list [ref=e567]:
+                  - listitem [ref=e568]:
+                    - paragraph [ref=e569]:
+                      - link "工具" [ref=e570] [cursor=pointer]:
+                        - /url: tool.html
+                  - listitem [ref=e571]:
+                    - paragraph [ref=e572]:
+                      - link "工作区" [ref=e573] [cursor=pointer]:
+                        - /url: workspace.html
+                  - listitem [ref=e574]:
+                    - paragraph [ref=e575]:
+                      - link "架构" [ref=e576] [cursor=pointer]:
+                        - /url: architecture.html
+                  - listitem [ref=e577]:
+                    - paragraph [ref=e578]:
+                      - link "流式输出" [ref=e579] [cursor=pointer]:
+                        - /url: streaming.html
+        - contentinfo [ref=e580]:
+          - generic [ref=e581]:
+            - link "Next 子 Agent 流式输出" [ref=e582] [cursor=pointer]:
+              - /url: streaming.html
+              - generic [ref=e583]:
+                - generic [ref=e585]: Next
+                - generic [ref=e586]: 子 Agent 流式输出
+              - img [ref=e587]
+            - link "Previous 技能（Skill）" [ref=e589] [cursor=pointer]:
+              - /url: skill.html
+              - img [ref=e590]
+              - generic [ref=e592]:
+                - generic [ref=e594]: Previous
+                - generic [ref=e595]: 技能（Skill）
+          - generic [ref=e596]:
+            - generic [ref=e597]:
+              - generic [ref=e598]: Copyright © 2025, Tongyi Lab, Alibaba Inc.
+              - text: Made with
+              - link "Furo" [ref=e599] [cursor=pointer]:
+                - /url: https://github.com/pradyunsg/furo
+              - generic [ref=e600]: Last updated on 2026-05-15
+            - generic [ref=e602]:
+              - link "GitHub" [ref=e603] [cursor=pointer]:
+                - /url: https://github.com/agentscope-ai/agentscope-java
+                - img [ref=e604]
+              - link "Discord" [ref=e606] [cursor=pointer]:
+                - /url: https://discord.gg/eYMpfnkG8h
+                - img [ref=e607]
+              - link "DingTalk" [ref=e610] [cursor=pointer]:
+                - /url: https://qr.dingtalk.com/action/joingroup?code=v1,k1,OmDlBXpjW+I2vWjKDsjvI9dhcXjGZi3bQiojOq3dlDw=&_dt_no_comment=1&origin=11
+                - img [ref=e611]
+      - complementary [ref=e613]:
+        - generic [ref=e614]:
+          - generic [ref=e615]: On this page
+          - list [ref=e618]:
+            - listitem [ref=e619]:
+              - list [ref=e620]:
+                - listitem [ref=e621]:
+                  - link "作用" [ref=e622] [cursor=pointer]:
+                    - /url: "#id1"
+                - listitem [ref=e623]:
+                  - link "何时启用" [ref=e624] [cursor=pointer]:
+                    - /url: "#id2"
+                - listitem [ref=e625]:
+                  - link "声明来源" [ref=e626] [cursor=pointer]:
+                    - /url: "#id3"
+                - listitem [ref=e627]:
+                  - link "声明模型（SubagentDeclaration）" [ref=e628] [cursor=pointer]:
+                    - /url: "#subagentdeclaration"
+                - listitem [ref=e629]:
+                  - link "运行时工作区五行判定表" [ref=e630] [cursor=pointer]:
+                    - /url: "#id4"
+                - listitem [ref=e631]:
+                  - link "声明文件（workspace/subagents/<id>.md）" [ref=e632] [cursor=pointer]:
+                    - /url: "#workspace-subagents-id-md"
+                    - text: 声明文件（
+                    - code [ref=e633]: workspace/subagents/<id>.md
+                    - text: ）
+                - listitem [ref=e634]:
+                  - link "编程式配置" [ref=e635] [cursor=pointer]:
+                    - /url: "#id5"
+                - listitem [ref=e636]:
+                  - link "内置 general-purpose" [ref=e637] [cursor=pointer]:
+                    - /url: "#general-purpose"
+                    - text: 内置
+                    - code [ref=e638]: general-purpose
+                - listitem [ref=e639]:
+                  - link "防递归与深度保护" [ref=e640] [cursor=pointer]:
+                    - /url: "#id6"
+                - listitem [ref=e641]:
+                  - link "RuntimeContext 透传" [ref=e642] [cursor=pointer]:
+                    - /url: "#runtimecontext"
+                - listitem [ref=e643]:
+                  - link "调用工具与关键参数" [ref=e644] [cursor=pointer]:
+                    - /url: "#id7"
+                - listitem [ref=e645]:
+                  - link "异步任务生命周期与存储" [ref=e646] [cursor=pointer]:
+                    - /url: "#id8"
+                - listitem [ref=e647]:
+                  - link "分布式语义" [ref=e648] [cursor=pointer]:
+                    - /url: "#id9"
+                - listitem [ref=e649]:
+                  - link "Remote subagent 行为" [ref=e650] [cursor=pointer]:
+                    - /url: "#remote-subagent"
+                - listitem [ref=e651]:
+                  - link "实践建议" [ref=e652] [cursor=pointer]:
+                    - /url: "#id10"
+                - listitem [ref=e653]:
+                  - link "相关文档" [ref=e654] [cursor=pointer]:
+                    - /url: "#id11"

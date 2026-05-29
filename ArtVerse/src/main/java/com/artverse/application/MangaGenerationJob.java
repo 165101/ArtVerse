@@ -1,0 +1,67 @@
+package com.artverse.application;
+
+import com.artverse.domain.MangaImage;
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+@Getter
+@Setter
+public class MangaGenerationJob {
+
+    private final Long chapterId;
+    private final List<String> scenes;
+    private final List<SseEmitter> subscribers = new CopyOnWriteArrayList<>();
+    private final List<String> eventHistory = new CopyOnWriteArrayList<>();
+    private volatile boolean running = true;
+    private volatile boolean completed = false;
+
+    public MangaGenerationJob(Long chapterId, List<String> scenes) {
+        this.chapterId = chapterId;
+        this.scenes = scenes;
+    }
+
+    public void addSubscriber(SseEmitter emitter) {
+        subscribers.add(emitter);
+        // Replay history
+        for (String event : eventHistory) {
+            try {
+                emitter.send(event);
+            } catch (Exception e) {
+                subscribers.remove(emitter);
+            }
+        }
+    }
+
+    public void broadcastEvent(String event) {
+        eventHistory.add(event);
+        if (eventHistory.size() > 300) {
+            eventHistory.removeFirst();
+        }
+        for (SseEmitter subscriber : subscribers) {
+            try {
+                subscriber.send(event);
+            } catch (Exception e) {
+                subscribers.remove(subscriber);
+            }
+        }
+    }
+
+    public void complete() {
+        completed = true;
+        running = false;
+        for (SseEmitter subscriber : subscribers) {
+            subscriber.complete();
+        }
+    }
+
+    public void error(String message) {
+        running = false;
+        for (SseEmitter subscriber : subscribers) {
+            subscriber.completeWithError(new RuntimeException(message));
+        }
+    }
+}

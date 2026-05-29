@@ -1,0 +1,653 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - link "AgentScope Java" [ref=e5] [cursor=pointer]:
+          - /url: ../../en/intro.html
+          - generic [ref=e6]:
+            - text: AgentScope
+            - text: Java
+        - navigation "Documentation sections" [ref=e8]:
+          - generic [ref=e9]:
+            - link "首页" [ref=e10] [cursor=pointer]:
+              - /url: ../intro.html
+            - link "Harness" [ref=e11] [cursor=pointer]:
+              - /url: overview.html
+            - link "Agent" [ref=e12] [cursor=pointer]:
+              - /url: ../quickstart/installation.html
+            - link "集成" [ref=e13] [cursor=pointer]:
+              - /url: ../integration/overview.html
+            - link "博客" [ref=e14] [cursor=pointer]:
+              - /url: ../blogs/index.html
+            - link "社区" [ref=e15] [cursor=pointer]:
+              - /url: ../community/overview.html
+      - generic "Site actions" [ref=e16]:
+        - search [ref=e17]:
+          - searchbox "Search" [ref=e18]
+          - button "Search" [ref=e19] [cursor=pointer]:
+            - img [ref=e20]
+        - button "Toggle Light / Dark / Auto color theme" [ref=e24] [cursor=pointer]:
+          - img [ref=e25]
+        - button "中文" [ref=e29] [cursor=pointer]:
+          - generic [ref=e30]: 中文
+  - link "Skip to content" [ref=e31] [cursor=pointer]:
+    - /url: "#furo-main-content"
+  - generic [ref=e32]:
+    - complementary [ref=e33]:
+      - generic [ref=e37]:
+        - heading "Harness" [ref=e38]
+        - list [ref=e39]:
+          - listitem [ref=e40]:
+            - link "概览" [ref=e41] [cursor=pointer]:
+              - /url: overview.html
+          - listitem [ref=e42]:
+            - link "架构" [ref=e43] [cursor=pointer]:
+              - /url: architecture.html
+          - listitem [ref=e44]:
+            - link "工作区" [ref=e45] [cursor=pointer]:
+              - /url: workspace.html
+          - listitem [ref=e46]:
+            - link "文件系统" [ref=e47] [cursor=pointer]:
+              - /url: filesystem.html
+          - listitem [ref=e48]:
+            - link "会话" [ref=e49] [cursor=pointer]:
+              - /url: session.html
+          - listitem [ref=e50]:
+            - link "记忆" [ref=e51] [cursor=pointer]:
+              - /url: memory.html
+          - listitem [ref=e52]:
+            - link "工具" [ref=e53] [cursor=pointer]:
+              - /url: "#"
+          - listitem [ref=e54]:
+            - link "技能" [ref=e55] [cursor=pointer]:
+              - /url: skill.html
+          - listitem [ref=e56]:
+            - link "子 Agent" [ref=e57] [cursor=pointer]:
+              - /url: subagent.html
+          - listitem [ref=e58]:
+            - link "子 Agent 流式" [ref=e59] [cursor=pointer]:
+              - /url: streaming.html
+          - listitem [ref=e60]:
+            - link "快速开始" [ref=e61] [cursor=pointer]:
+              - /url: quickstart/index.html
+          - listitem [ref=e62]:
+            - link "沙箱" [ref=e63] [cursor=pointer]:
+              - /url: sandbox/index.html
+          - listitem [ref=e64]:
+            - link "AgentRun 后端" [ref=e65] [cursor=pointer]:
+              - /url: sandbox/agentrun.html
+          - listitem [ref=e66]:
+            - link "示例" [ref=e67] [cursor=pointer]:
+              - /url: example/index.html
+    - generic [ref=e68]:
+      - generic [ref=e69]:
+        - generic [ref=e70]:
+          - generic [ref=e71]:
+            - link "View this page" [ref=e73] [cursor=pointer]:
+              - /url: https://github.com/agentscope-ai/agentscope-java/blob/master/docs/zh/harness/tool.md?plain=true
+              - img [ref=e74]
+              - generic [ref=e76]: View this page
+            - img [ref=e79] [cursor=pointer]
+          - main [ref=e81]:
+            - generic [ref=e82]:
+              - heading "工具（Tool）" [level=1] [ref=e83]
+              - generic [ref=e84]:
+                - heading "作用" [level=2] [ref=e85]
+                - paragraph [ref=e86]:
+                  - text: harness 层默认为 agent 提供一套“足够走完一个闭环”的内置工具：读写文件、检索记忆与会话、委派子 agent、可选走 shell。不需手动注册，
+                  - code [ref=e87]: HarnessAgent.build()
+                  - text: 与
+                  - code [ref=e88]: SubagentsHook
+                  - text: 会一起装好。
+              - generic [ref=e89]:
+                - heading "注册路径" [level=2] [ref=e90]
+                - generic [ref=e91]:
+                  - document [ref=e94]:
+                    - generic [ref=e108]:
+                      - paragraph [ref=e122]: backend 是 sandbox
+                      - generic [ref=e123]:
+                        - paragraph [ref=e130]: HarnessAgent.build
+                        - paragraph [ref=e137]: FilesystemTool
+                        - paragraph [ref=e144]: MemorySearchTool
+                        - paragraph [ref=e151]: MemoryGetTool
+                        - paragraph [ref=e158]: SessionSearchTool
+                        - paragraph [ref=e165]: ShellExecuteTool
+                        - paragraph [ref=e172]:
+                          - text: SubagentsHook.tools
+                          - text: 非 leaf 且有 model
+                        - paragraph [ref=e179]: AgentSpawnTool
+                        - paragraph [ref=e186]: TaskTool
+                  - button "Expand diagram" [ref=e187] [cursor=pointer]:
+                    - img [ref=e188]
+                - list [ref=e193]:
+                  - listitem [ref=e194]:
+                    - paragraph [ref=e195]:
+                      - strong [ref=e196]: 直接 register
+                      - text: ：
+                      - code [ref=e197]: FilesystemTool
+                      - text: /
+                      - code [ref=e198]: MemorySearchTool
+                      - text: /
+                      - code [ref=e199]: MemoryGetTool
+                      - text: /
+                      - code [ref=e200]: SessionSearchTool
+                      - text: 必装；
+                      - code [ref=e201]: ShellExecuteTool
+                      - text: 仅在
+                      - code [ref=e202]: backend instanceof AbstractSandboxFilesystem
+                      - text: 时装。
+                  - listitem [ref=e203]:
+                    - paragraph [ref=e204]:
+                      - strong [ref=e205]: 间接 register
+                      - text: ：
+                      - code [ref=e206]: AgentSpawnTool
+                      - text: 与
+                      - code [ref=e207]: TaskTool
+                      - text: 是
+                      - code [ref=e208]: SubagentsHook.tools()
+                      - text: 返回的，仅在非 leaf 且配了
+                      - code [ref=e209]: model
+                      - text: 时出现；在 session mode 下
+                      - code [ref=e210]: agent_*
+                      - text: 会被
+                      - code [ref=e211]: sessions_*
+                      - text: 替换。
+              - generic [ref=e212]:
+                - heading "文件系统·FilesystemTool" [level=2] [ref=e213]:
+                  - text: 文件系统·
+                  - code [ref=e214]: FilesystemTool
+                - paragraph [ref=e215]:
+                  - text: 包装
+                  - code [ref=e216]: AbstractFilesystem
+                  - text: ；路径是后端本地路径。
+                - table [ref=e218]:
+                  - rowgroup [ref=e219]:
+                    - row "工具 作用 参数" [ref=e220]:
+                      - columnheader "工具" [ref=e221]:
+                        - paragraph [ref=e222]: 工具
+                      - columnheader "作用" [ref=e223]:
+                        - paragraph [ref=e224]: 作用
+                      - columnheader "参数" [ref=e225]:
+                        - paragraph [ref=e226]: 参数
+                  - rowgroup [ref=e227]:
+                    - row "read_file 读文件内容 path, offset（0-indexed）, limit（0 = 读全）" [ref=e228]:
+                      - cell "read_file" [ref=e229]:
+                        - paragraph [ref=e230]:
+                          - code [ref=e231]: read_file
+                      - cell "读文件内容" [ref=e232]:
+                        - paragraph [ref=e233]: 读文件内容
+                      - cell "path, offset（0-indexed）, limit（0 = 读全）" [ref=e234]:
+                        - paragraph [ref=e235]:
+                          - code [ref=e236]: path
+                          - text: ","
+                          - code [ref=e237]: offset
+                          - text: （0-indexed）,
+                          - code [ref=e238]: limit
+                          - text: （0 = 读全）
+                    - row "write_file 创建新文件 path, content（已存在会报错）" [ref=e239]:
+                      - cell "write_file" [ref=e240]:
+                        - paragraph [ref=e241]:
+                          - code [ref=e242]: write_file
+                      - cell "创建新文件" [ref=e243]:
+                        - paragraph [ref=e244]: 创建新文件
+                      - cell "path, content（已存在会报错）" [ref=e245]:
+                        - paragraph [ref=e246]:
+                          - code [ref=e247]: path
+                          - text: ","
+                          - code [ref=e248]: content
+                          - text: （已存在会报错）
+                    - row "edit_file 精确字符串替换 path, old_string（默认唯一）, new_string, replace_all（默认 false）" [ref=e249]:
+                      - cell "edit_file" [ref=e250]:
+                        - paragraph [ref=e251]:
+                          - code [ref=e252]: edit_file
+                      - cell "精确字符串替换" [ref=e253]:
+                        - paragraph [ref=e254]: 精确字符串替换
+                      - cell "path, old_string（默认唯一）, new_string, replace_all（默认 false）" [ref=e255]:
+                        - paragraph [ref=e256]:
+                          - code [ref=e257]: path
+                          - text: ","
+                          - code [ref=e258]: old_string
+                          - text: （默认唯一）,
+                          - code [ref=e259]: new_string
+                          - text: ","
+                          - code [ref=e260]: replace_all
+                          - text: （默认 false）
+                    - row "grep_files 指定路径中搜字符串（非正则） pattern, path, glob（如 *.java）" [ref=e261]:
+                      - cell "grep_files" [ref=e262]:
+                        - paragraph [ref=e263]:
+                          - code [ref=e264]: grep_files
+                      - cell "指定路径中搜字符串（非正则）" [ref=e265]:
+                        - paragraph [ref=e266]: 指定路径中搜字符串（非正则）
+                      - cell "pattern, path, glob（如 *.java）" [ref=e267]:
+                        - paragraph [ref=e268]:
+                          - code [ref=e269]: pattern
+                          - text: ","
+                          - code [ref=e270]: path
+                          - text: ","
+                          - code [ref=e271]: glob
+                          - text: （如
+                          - code [ref=e272]: "*.java"
+                          - text: ）
+                    - row "glob_files 按 glob 查文件 pattern（如 **/*.md）, path" [ref=e273]:
+                      - cell "glob_files" [ref=e274]:
+                        - paragraph [ref=e275]:
+                          - code [ref=e276]: glob_files
+                      - cell "按 glob 查文件" [ref=e277]:
+                        - paragraph [ref=e278]: 按 glob 查文件
+                      - cell "pattern（如 **/*.md）, path" [ref=e279]:
+                        - paragraph [ref=e280]:
+                          - code [ref=e281]: pattern
+                          - text: （如
+                          - code [ref=e282]: "**/*.md"
+                          - text: ）,
+                          - code [ref=e283]: path
+                    - row "list_files 列目录 path" [ref=e284]:
+                      - cell "list_files" [ref=e285]:
+                        - paragraph [ref=e286]:
+                          - code [ref=e287]: list_files
+                      - cell "列目录" [ref=e288]:
+                        - paragraph [ref=e289]: 列目录
+                      - cell "path" [ref=e290]:
+                        - paragraph [ref=e291]:
+                          - code [ref=e292]: path
+              - generic [ref=e293]:
+                - heading "记忆·MemorySearchTool / MemoryGetTool" [level=2] [ref=e294]:
+                  - text: 记忆·
+                  - code [ref=e295]: MemorySearchTool
+                  - text: /
+                  - code [ref=e296]: MemoryGetTool
+                - table [ref=e298]:
+                  - rowgroup [ref=e299]:
+                    - row "工具 作用 参数" [ref=e300]:
+                      - columnheader "工具" [ref=e301]:
+                        - paragraph [ref=e302]: 工具
+                      - columnheader "作用" [ref=e303]:
+                        - paragraph [ref=e304]: 作用
+                      - columnheader "参数" [ref=e305]:
+                        - paragraph [ref=e306]: 参数
+                  - rowgroup [ref=e307]:
+                    - row "memory_search FTS5 全文检索，最多返 30 条；MemoryIndex 不可用时 fallback 到关键字扫 query" [ref=e308]:
+                      - cell "memory_search" [ref=e309]:
+                        - paragraph [ref=e310]:
+                          - code [ref=e311]: memory_search
+                      - cell "FTS5 全文检索，最多返 30 条；MemoryIndex 不可用时 fallback 到关键字扫" [ref=e312]:
+                        - paragraph [ref=e313]: FTS5 全文检索，最多返 30 条；MemoryIndex 不可用时 fallback 到关键字扫
+                      - cell "query" [ref=e314]:
+                        - paragraph [ref=e315]:
+                          - code [ref=e316]: query
+                    - row "memory_get 读记忆文件中指定行范围，输出带行号 path（工作区相对）, startLine, endLine（1-based）" [ref=e317]:
+                      - cell "memory_get" [ref=e318]:
+                        - paragraph [ref=e319]:
+                          - code [ref=e320]: memory_get
+                      - cell "读记忆文件中指定行范围，输出带行号" [ref=e321]:
+                        - paragraph [ref=e322]: 读记忆文件中指定行范围，输出带行号
+                      - cell "path（工作区相对）, startLine, endLine（1-based）" [ref=e323]:
+                        - paragraph [ref=e324]:
+                          - code [ref=e325]: path
+                          - text: （工作区相对）,
+                          - code [ref=e326]: startLine
+                          - text: ","
+                          - code [ref=e327]: endLine
+                          - text: （1-based）
+                - blockquote [ref=e328]:
+                  - paragraph [ref=e330]:
+                    - text: 参数名是驼峰（
+                    - code [ref=e331]: startLine
+                    - text: /
+                    - code [ref=e332]: endLine
+                    - text: ），与 filesystem 的 snake_case 不一致。
+              - generic [ref=e333]:
+                - heading "会话·SessionSearchTool" [level=2] [ref=e334]:
+                  - text: 会话·
+                  - code [ref=e335]: SessionSearchTool
+                - table [ref=e337]:
+                  - rowgroup [ref=e338]:
+                    - row "工具 作用 参数" [ref=e339]:
+                      - columnheader "工具" [ref=e340]:
+                        - paragraph [ref=e341]: 工具
+                      - columnheader "作用" [ref=e342]:
+                        - paragraph [ref=e343]: 作用
+                      - columnheader "参数" [ref=e344]:
+                        - paragraph [ref=e345]: 参数
+                  - rowgroup [ref=e346]:
+                    - row "session_search 在会话 JSONL 中扫关键词 query, agentId（可选）, maxResults（默认 10）" [ref=e347]:
+                      - cell "session_search" [ref=e348]:
+                        - paragraph [ref=e349]:
+                          - code [ref=e350]: session_search
+                      - cell "在会话 JSONL 中扫关键词" [ref=e351]:
+                        - paragraph [ref=e352]: 在会话 JSONL 中扫关键词
+                      - cell "query, agentId（可选）, maxResults（默认 10）" [ref=e353]:
+                        - paragraph [ref=e354]:
+                          - code [ref=e355]: query
+                          - text: ","
+                          - code [ref=e356]: agentId
+                          - text: （可选）,
+                          - code [ref=e357]: maxResults
+                          - text: （默认 10）
+                    - row "session_list 列某个 agent 的会话，优先读 sessions.json agentId" [ref=e358]:
+                      - cell "session_list" [ref=e359]:
+                        - paragraph [ref=e360]:
+                          - code [ref=e361]: session_list
+                      - cell "列某个 agent 的会话，优先读 sessions.json" [ref=e362]:
+                        - paragraph [ref=e363]:
+                          - text: 列某个 agent 的会话，优先读
+                          - code [ref=e364]: sessions.json
+                      - cell "agentId" [ref=e365]:
+                        - paragraph [ref=e366]:
+                          - code [ref=e367]: agentId
+                    - row "session_history 返某个会话最近 N 条消息 agentId, sessionId, lastN（默认 20）" [ref=e368]:
+                      - cell "session_history" [ref=e369]:
+                        - paragraph [ref=e370]:
+                          - code [ref=e371]: session_history
+                      - cell "返某个会话最近 N 条消息" [ref=e372]:
+                        - paragraph [ref=e373]: 返某个会话最近 N 条消息
+                      - cell "agentId, sessionId, lastN（默认 20）" [ref=e374]:
+                        - paragraph [ref=e375]:
+                          - code [ref=e376]: agentId
+                          - text: ","
+                          - code [ref=e377]: sessionId
+                          - text: ","
+                          - code [ref=e378]: lastN
+                          - text: （默认 20）
+                - blockquote [ref=e379]:
+                  - paragraph [ref=e381]:
+                    - text: 参数名都是驼峰，且
+                    - code [ref=e382]: session_search
+                    - text: 返回结果是扫全部
+                    - code [ref=e383]: agents/<agentId>/sessions/*.jsonl
+                    - text: 后的“首次命中 10 条”，
+                    - strong [ref=e384]: 不是
+                    - text: 按相关性排序。
+              - generic [ref=e385]:
+                - heading "子 Agent·AgentSpawnTool" [level=2] [ref=e386]:
+                  - text: 子 Agent·
+                  - code [ref=e387]: AgentSpawnTool
+                - table [ref=e389]:
+                  - rowgroup [ref=e390]:
+                    - row "工具 作用 参数" [ref=e391]:
+                      - columnheader "工具" [ref=e392]:
+                        - paragraph [ref=e393]: 工具
+                      - columnheader "作用" [ref=e394]:
+                        - paragraph [ref=e395]: 作用
+                      - columnheader "参数" [ref=e396]:
+                        - paragraph [ref=e397]: 参数
+                  - rowgroup [ref=e398]:
+                    - row "agent_spawn 创建临时子 agent、可选走任务 agent_id（必填）, task（可选，留空仅建 session）, label（可选别名）, timeout_seconds（默认 30，0=后台，上限 600）" [ref=e399]:
+                      - cell "agent_spawn" [ref=e400]:
+                        - paragraph [ref=e401]:
+                          - code [ref=e402]: agent_spawn
+                      - cell "创建临时子 agent、可选走任务" [ref=e403]:
+                        - paragraph [ref=e404]: 创建临时子 agent、可选走任务
+                      - cell "agent_id（必填）, task（可选，留空仅建 session）, label（可选别名）, timeout_seconds（默认 30，0=后台，上限 600）" [ref=e405]:
+                        - paragraph [ref=e406]:
+                          - code [ref=e407]: agent_id
+                          - text: （必填）,
+                          - code [ref=e408]: task
+                          - text: （可选，留空仅建 session）,
+                          - code [ref=e409]: label
+                          - text: （可选别名）,
+                          - code [ref=e410]: timeout_seconds
+                          - text: （默认 30，
+                          - code [ref=e411]: "0"
+                          - text: =后台，上限 600）
+                    - row "agent_send 向已存在子 agent 补一条 agent_key 或 label（二选一）, message, timeout_seconds" [ref=e412]:
+                      - cell "agent_send" [ref=e413]:
+                        - paragraph [ref=e414]:
+                          - code [ref=e415]: agent_send
+                      - cell "向已存在子 agent 补一条" [ref=e416]:
+                        - paragraph [ref=e417]: 向已存在子 agent 补一条
+                      - cell "agent_key 或 label（二选一）, message, timeout_seconds" [ref=e418]:
+                        - paragraph [ref=e419]:
+                          - code [ref=e420]: agent_key
+                          - text: 或
+                          - code [ref=e421]: label
+                          - text: （二选一）,
+                          - code [ref=e422]: message
+                          - text: ","
+                          - code [ref=e423]: timeout_seconds
+                    - row "agent_list 列当前子 agent 无" [ref=e424]:
+                      - cell "agent_list" [ref=e425]:
+                        - paragraph [ref=e426]:
+                          - code [ref=e427]: agent_list
+                      - cell "列当前子 agent" [ref=e428]:
+                        - paragraph [ref=e429]: 列当前子 agent
+                      - cell "无" [ref=e430]:
+                        - paragraph [ref=e431]: 无
+                - generic [ref=e433]:
+                  - generic [ref=e434]: "agent_spawn agent_id=\"research-analyst\" task=\"调研主题 X\" timeout_seconds=60 # 异步 agent_spawn agent_id=\"research-analyst\" task=\"全库安全审计\" timeout_seconds=0 # → agent_key + task_id"
+                  - button "Copy to clipboard" [ref=e435] [cursor=pointer]:
+                    - img "Copy to clipboard" [ref=e436]
+                - paragraph [ref=e440]:
+                  - text: Session mode 下，这三个名会变为
+                  - code [ref=e441]: sessions_spawn
+                  - text: /
+                  - code [ref=e442]: sessions_send
+                  - text: /
+                  - code [ref=e443]: sessions_list
+                  - text: 。
+              - generic [ref=e444]:
+                - heading "后台任务·TaskTool" [level=2] [ref=e445]:
+                  - text: 后台任务·
+                  - code [ref=e446]: TaskTool
+                - table [ref=e448]:
+                  - rowgroup [ref=e449]:
+                    - row "工具 作用 参数" [ref=e450]:
+                      - columnheader "工具" [ref=e451]:
+                        - paragraph [ref=e452]: 工具
+                      - columnheader "作用" [ref=e453]:
+                        - paragraph [ref=e454]: 作用
+                      - columnheader "参数" [ref=e455]:
+                        - paragraph [ref=e456]: 参数
+                  - rowgroup [ref=e457]:
+                    - row "task_output 拿后台任务结果 task_id, block（默认 true）, timeout 默认 30000ms，上限 600000ms" [ref=e458]:
+                      - cell "task_output" [ref=e459]:
+                        - paragraph [ref=e460]:
+                          - code [ref=e461]: task_output
+                      - cell "拿后台任务结果" [ref=e462]:
+                        - paragraph [ref=e463]: 拿后台任务结果
+                      - cell "task_id, block（默认 true）, timeout 默认 30000ms，上限 600000ms" [ref=e464]:
+                        - paragraph [ref=e465]:
+                          - code [ref=e466]: task_id
+                          - text: ","
+                          - code [ref=e467]: block
+                          - text: （默认 true）,
+                          - code [ref=e468]: timeout
+                          - text: 默认 30000ms，上限 600000ms
+                    - row "task_cancel 取消任务；终态不生效 task_id" [ref=e469]:
+                      - cell "task_cancel" [ref=e470]:
+                        - paragraph [ref=e471]:
+                          - code [ref=e472]: task_cancel
+                      - cell "取消任务；终态不生效" [ref=e473]:
+                        - paragraph [ref=e474]: 取消任务；终态不生效
+                      - cell "task_id" [ref=e475]:
+                        - paragraph [ref=e476]:
+                          - code [ref=e477]: task_id
+                    - row "task_list 列任务 status_filter：running / completed / failed / cancelled / all" [ref=e478]:
+                      - cell "task_list" [ref=e479]:
+                        - paragraph [ref=e480]:
+                          - code [ref=e481]: task_list
+                      - cell "列任务" [ref=e482]:
+                        - paragraph [ref=e483]: 列任务
+                      - cell "status_filter：running / completed / failed / cancelled / all" [ref=e484]:
+                        - paragraph [ref=e485]:
+                          - code [ref=e486]: status_filter
+                          - text: ：running / completed / failed / cancelled / all
+              - generic [ref=e487]:
+                - heading "Shell·ShellExecuteTool（条件性装）" [level=2] [ref=e488]:
+                  - text: Shell·
+                  - code [ref=e489]: ShellExecuteTool
+                  - text: （条件性装）
+                - paragraph [ref=e490]:
+                  - text: 仅在后端是
+                  - code [ref=e491]: AbstractSandboxFilesystem
+                  - text: （包含
+                  - code [ref=e492]: LocalFilesystemWithShell
+                  - text: ）时才被注册。如果你用的是纯
+                  - code [ref=e493]: LocalFilesystem
+                  - text: 或
+                  - code [ref=e494]: RemoteFilesystem
+                  - text: ，子工具不出现。
+                - table [ref=e496]:
+                  - rowgroup [ref=e497]:
+                    - row "工具 作用 参数" [ref=e498]:
+                      - columnheader "工具" [ref=e499]:
+                        - paragraph [ref=e500]: 工具
+                      - columnheader "作用" [ref=e501]:
+                        - paragraph [ref=e502]: 作用
+                      - columnheader "参数" [ref=e503]:
+                        - paragraph [ref=e504]: 参数
+                  - rowgroup [ref=e505]:
+                    - row "execute 走后端 execute()，返 stdout + exit code command, working_directory（可选，实际拼接为 cd <dir> && <cmd>）, timeout（秒，默认 30）" [ref=e506]:
+                      - cell "execute" [ref=e507]:
+                        - paragraph [ref=e508]:
+                          - code [ref=e509]: execute
+                      - cell "走后端 execute()，返 stdout + exit code" [ref=e510]:
+                        - paragraph [ref=e511]:
+                          - text: 走后端
+                          - code [ref=e512]: execute()
+                          - text: ，返 stdout + exit code
+                      - cell "command, working_directory（可选，实际拼接为 cd <dir> && <cmd>）, timeout（秒，默认 30）" [ref=e513]:
+                        - paragraph [ref=e514]:
+                          - code [ref=e515]: command
+                          - text: ","
+                          - code [ref=e516]: working_directory
+                          - text: （可选，实际拼接为
+                          - code [ref=e517]: cd <dir> && <cmd>
+                          - text: ）,
+                          - code [ref=e518]: timeout
+                          - text: （秒，默认 30）
+                - blockquote [ref=e519]:
+                  - paragraph [ref=e521]:
+                    - strong [ref=e522]: 注意
+                    - text: ：@Tool 未显式设
+                    - code [ref=e523]: name
+                    - text: ，默认取方法名，所以 LLM 看到的工具名是
+                    - code [ref=e524]: execute
+                    - text: 。如果后续统一为
+                    - code [ref=e525]: shell_execute
+                    - text: 是个小重构，参见
+                    - link "roadmap" [ref=e526] [cursor=pointer]:
+                      - /url: "#./roadmap.md"
+                    - text: 。
+                - generic [ref=e528]:
+                  - generic [ref=e529]: "execute command=\"find . -name '*.java' | wc -l\" execute command=\"mvn test\" timeout=300 execute command=\"git status\" working_directory=\"app\" # 拼为 cd app && git status"
+                  - button "Copy to clipboard" [ref=e530] [cursor=pointer]:
+                    - img "Copy to clipboard" [ref=e531]
+              - generic [ref=e535]:
+                - heading "相关文档" [level=2] [ref=e536]
+                - list [ref=e537]:
+                  - listitem [ref=e538]:
+                    - paragraph [ref=e539]:
+                      - link "文件系统" [ref=e540] [cursor=pointer]:
+                        - /url: filesystem.html
+                      - text: — 后端实现与沙箱接口
+                  - listitem [ref=e541]:
+                    - paragraph [ref=e542]:
+                      - link "记忆" [ref=e543] [cursor=pointer]:
+                        - /url: memory.html
+                      - text: —
+                      - code [ref=e544]: memory_search
+                      - text: /
+                      - code [ref=e545]: memory_get
+                      - text: 背后的 FTS5 与双层记忆
+                  - listitem [ref=e546]:
+                    - paragraph [ref=e547]:
+                      - link "会话" [ref=e548] [cursor=pointer]:
+                        - /url: session.html
+                      - text: —
+                      - code [ref=e549]: session_*
+                      - text: 系列背后的
+                      - code [ref=e550]: WorkspaceSession
+                      - text: /
+                      - code [ref=e551]: SessionTree
+                      - text: 双轨
+                  - listitem [ref=e552]:
+                    - paragraph [ref=e553]:
+                      - link "子 Agent" [ref=e554] [cursor=pointer]:
+                        - /url: subagent.html
+                      - text: —
+                      - code [ref=e555]: agent_spawn
+                      - text: /
+                      - code [ref=e556]: agent_send
+                      - text: /
+                      - code [ref=e557]: task_*
+                      - text: 的调度与生命周期
+        - contentinfo [ref=e558]:
+          - generic [ref=e559]:
+            - link "Next 技能（Skill）" [ref=e560] [cursor=pointer]:
+              - /url: skill.html
+              - generic [ref=e561]:
+                - generic [ref=e563]: Next
+                - generic [ref=e564]: 技能（Skill）
+              - img [ref=e565]
+            - link "Previous 记忆（Memory）" [ref=e567] [cursor=pointer]:
+              - /url: memory.html
+              - img [ref=e568]
+              - generic [ref=e570]:
+                - generic [ref=e572]: Previous
+                - generic [ref=e573]: 记忆（Memory）
+          - generic [ref=e574]:
+            - generic [ref=e575]:
+              - generic [ref=e576]: Copyright © 2025, Tongyi Lab, Alibaba Inc.
+              - text: Made with
+              - link "Furo" [ref=e577] [cursor=pointer]:
+                - /url: https://github.com/pradyunsg/furo
+              - generic [ref=e578]: Last updated on 2026-05-15
+            - generic [ref=e580]:
+              - link "GitHub" [ref=e581] [cursor=pointer]:
+                - /url: https://github.com/agentscope-ai/agentscope-java
+                - img [ref=e582]
+              - link "Discord" [ref=e584] [cursor=pointer]:
+                - /url: https://discord.gg/eYMpfnkG8h
+                - img [ref=e585]
+              - link "DingTalk" [ref=e588] [cursor=pointer]:
+                - /url: https://qr.dingtalk.com/action/joingroup?code=v1,k1,OmDlBXpjW+I2vWjKDsjvI9dhcXjGZi3bQiojOq3dlDw=&_dt_no_comment=1&origin=11
+                - img [ref=e589]
+      - complementary [ref=e591]:
+        - generic [ref=e592]:
+          - generic [ref=e593]: On this page
+          - list [ref=e596]:
+            - listitem [ref=e597]:
+              - list [ref=e598]:
+                - listitem [ref=e599]:
+                  - link "作用" [ref=e600] [cursor=pointer]:
+                    - /url: "#id1"
+                - listitem [ref=e601]:
+                  - link "注册路径" [ref=e602] [cursor=pointer]:
+                    - /url: "#id2"
+                - listitem [ref=e603]:
+                  - link "文件系统·FilesystemTool" [ref=e604] [cursor=pointer]:
+                    - /url: "#filesystemtool"
+                    - text: 文件系统·
+                    - code [ref=e605]: FilesystemTool
+                - listitem [ref=e606]:
+                  - link "记忆·MemorySearchTool / MemoryGetTool" [ref=e607] [cursor=pointer]:
+                    - /url: "#memorysearchtool-memorygettool"
+                    - text: 记忆·
+                    - code [ref=e608]: MemorySearchTool
+                    - text: /
+                    - code [ref=e609]: MemoryGetTool
+                - listitem [ref=e610]:
+                  - link "会话·SessionSearchTool" [ref=e611] [cursor=pointer]:
+                    - /url: "#sessionsearchtool"
+                    - text: 会话·
+                    - code [ref=e612]: SessionSearchTool
+                - listitem [ref=e613]:
+                  - link "子 Agent·AgentSpawnTool" [ref=e614] [cursor=pointer]:
+                    - /url: "#agentagentspawntool"
+                    - text: 子 Agent·
+                    - code [ref=e615]: AgentSpawnTool
+                - listitem [ref=e616]:
+                  - link "后台任务·TaskTool" [ref=e617] [cursor=pointer]:
+                    - /url: "#tasktool"
+                    - text: 后台任务·
+                    - code [ref=e618]: TaskTool
+                - listitem [ref=e619]:
+                  - link "Shell·ShellExecuteTool（条件性装）" [ref=e620] [cursor=pointer]:
+                    - /url: "#shellshellexecutetool"
+                    - text: Shell·
+                    - code [ref=e621]: ShellExecuteTool
+                    - text: （条件性装）
+                - listitem [ref=e622]:
+                  - link "相关文档" [ref=e623] [cursor=pointer]:
+                    - /url: "#id3"

@@ -1,0 +1,3 @@
+[    1855ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://java.agentscope.io/_static/scripts/sphinx-book-theme.js:0
+[    1860ms] Identifier 'THEBE_JS_URL' has already been declared
+[    1869ms] [LOG] [togglebutton]: Adding toggle buttons to 0 items @ https://java.agentscope.io/_static/togglebutton.js?v=b8b12719:12

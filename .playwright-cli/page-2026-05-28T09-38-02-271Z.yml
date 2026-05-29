@@ -1,0 +1,200 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - link "AgentScope Java" [ref=e5] [cursor=pointer]:
+          - /url: ../en/intro.html
+          - generic [ref=e6]:
+            - text: AgentScope
+            - text: Java
+        - navigation "Documentation sections" [ref=e8]:
+          - generic [ref=e9]:
+            - link "首页" [ref=e10] [cursor=pointer]:
+              - /url: "#"
+            - link "Harness" [ref=e11] [cursor=pointer]:
+              - /url: harness/overview.html
+            - link "Agent" [ref=e12] [cursor=pointer]:
+              - /url: quickstart/installation.html
+            - link "集成" [ref=e13] [cursor=pointer]:
+              - /url: integration/overview.html
+            - link "博客" [ref=e14] [cursor=pointer]:
+              - /url: blogs/index.html
+            - link "社区" [ref=e15] [cursor=pointer]:
+              - /url: community/overview.html
+      - generic "Site actions" [ref=e16]:
+        - search [ref=e17]:
+          - searchbox "Search" [ref=e18]
+          - button "Search" [ref=e19] [cursor=pointer]:
+            - img [ref=e20]
+        - button "Toggle Light / Dark / Auto color theme" [ref=e24] [cursor=pointer]:
+          - img [ref=e25]
+        - button "中文" [ref=e29] [cursor=pointer]:
+          - generic [ref=e30]: 中文
+  - link "Skip to content" [ref=e31] [cursor=pointer]:
+    - /url: "#furo-main-content"
+  - generic [ref=e34]:
+    - main [ref=e36]:
+      - generic [ref=e37]:
+        - generic [ref=e38]:
+          - generic [ref=e39]:
+            - heading "专为分布式、企业级智能体 打造的 Harness 框架。" [level=1] [ref=e40]:
+              - text: 专为分布式、企业级智能体
+              - text: 打造的 Harness 框架。
+            - paragraph [ref=e41]: AgentScope Java 是面向 JVM 的开源 Agent 框架。提供 ReAct 推理、Harness 工程化基础设施、多智能体编排与 MCP/A2A 协议支持，覆盖从本地原型到企业级分布式部署全链路。
+            - generic [ref=e42]:
+              - link "快速开始 →" [ref=e43] [cursor=pointer]:
+                - /url: harness/overview.html
+              - link "GitHub" [ref=e44] [cursor=pointer]:
+                - /url: https://github.com/agentscope-ai/agentscope-java
+                - img [ref=e45]
+                - text: GitHub
+            - generic [ref=e47]:
+              - generic [ref=e48]: JDK 17+
+              - generic [ref=e49]: Maven Central
+              - generic [ref=e50]: Apache 2.0
+          - generic [ref=e52]:
+            - generic [ref=e58]:
+              - generic [ref=e59] [cursor=pointer]: HarnessAgent
+              - generic [ref=e60] [cursor=pointer]: ReActAgent
+            - generic [ref=e62]: import io.agentscope.harness.*; var agent = HarnessAgent.builder() .name("coder") .model(new QwenConfig("qwen-plus")) .filesystem(new LocalFilesystemSpec("./workspace")) .session(new RedisSession(jedisPool)) .build(); // 有状态 · 可恢复 · 记忆持久化 agent.call(messages, RuntimeContext.builder() .sessionId("user-123").build()).block();
+            - generic [ref=e63]:
+              - code [ref=e64]: io.agentscope:agentscope-harness
+              - button "复制 Maven" [ref=e65] [cursor=pointer]
+        - generic [ref=e66]:
+          - generic [ref=e67]:
+            - generic [ref=e68]: JDK 17+
+            - generic [ref=e69]: 最低 Java 版本
+          - generic [ref=e70]:
+            - generic [ref=e71]: Reactive
+            - generic [ref=e72]: 基于 Project Reactor
+          - generic [ref=e73]:
+            - generic [ref=e74]: MCP · A2A
+            - generic [ref=e75]: 开放协议支持
+          - generic [ref=e76]:
+            - generic [ref=e77]: Apache 2.0
+            - generic [ref=e78]: 开源协议
+        - generic [ref=e80]:
+          - generic [ref=e81]:
+            - generic [ref=e82]: Harness 工程化
+            - heading "企业级工程范式，开箱即用。" [level=2] [ref=e83]
+            - paragraph [ref=e84]: Harness 模块通过 Hook 机制在推理循环之外注入工作区管理、记忆持久化、对话压缩等工程能力，无需修改核心推理逻辑。
+            - list [ref=e85]:
+              - listitem [ref=e86]: — 结构化工作区作为 Agent 唯一状态来源
+              - listitem [ref=e87]: — 跨会话长期记忆沉淀与自动整理
+              - listitem [ref=e88]: — 上下文超长自动压缩，防止 Token 溢出
+              - listitem [ref=e89]: — 本机磁盘 → Docker 沙箱 → 对象存储，一行切换
+            - link "了解 Harness →" [ref=e90] [cursor=pointer]:
+              - /url: harness/overview.html
+          - generic [ref=e92]:
+            - generic [ref=e98]: workspace/
+            - generic [ref=e100]: "workspace/ ├── AGENTS.md # 人格 + 系统指令 ├── MEMORY.md # 长期记忆（自动维护） ├── knowledge/ # 领域知识与 RAG 索引 ├── skills/ # 可复用技能文件 ├── subagents/ # 子 Agent 配置 └── agents/coder/session-user-123/ ├── chat-history.jsonl └── scratchpad/ $ 每次 call → 自动加载 → 推理 → 回写记忆"
+        - generic [ref=e102]:
+          - generic [ref=e104]:
+            - generic [ref=e110]: multi-agent runtime architecture
+            - generic [ref=e112]: +------------------------------------------------------------+ | Supervisor (HarnessAgent) | | - 规划任务 / 调度子 Agent / 聚合结果 | +---------------------------+--------------------------------+ | +-----------------+------------------+ | | +---------v---------+ +---------v---------+ | researcher Agent | | coder Agent | | - web_search | | - filesystem/tool | | - read_file | | - code execution | +---------+---------+ +---------+---------+ | | +-----------------+------------------+ | +---------------------------v--------------------------------+ | Shared Runtime Infrastructure | | Session (Redis) · Workspace · Memory · MCP · A2A | +------------------------------------------------------------+
+          - generic [ref=e113]:
+            - generic [ref=e114]: 多智能体
+            - heading "像微服务一样编排 Agent。" [level=2] [ref=e115]
+            - paragraph [ref=e116]: 在 Markdown 文件中声明子 Agent 规格，主 Agent 在运行时按需 spawn 子 Agent，支持同步阻塞与异步非阻塞两种委派模式。
+            - list [ref=e117]:
+              - listitem [ref=e118]: — 声明式子 Agent 定义，无需修改代码
+              - listitem [ref=e119]: — 同步阻塞 / 异步非阻塞两种委派模式
+              - listitem [ref=e120]: — A2A 协议支持跨进程、跨机器调用
+              - listitem [ref=e121]: — 子 Agent 可独立继承或覆盖 Harness 配置
+            - link "了解多智能体 →" [ref=e122] [cursor=pointer]:
+              - /url: harness/subagent.html
+        - generic [ref=e123]:
+          - generic [ref=e124]:
+            - heading "全栈能力，专为生产打磨" [level=2] [ref=e125]
+            - paragraph [ref=e126]: 从推理核心到企业部署，AgentScope Java 覆盖智能体开发全链路。
+          - generic [ref=e127]:
+            - link "ReAct 推理 自主规划、工具调用与结果整合。内置安全中断、优雅取消与 Hook 人机协作，自主性与可控性兼得。 快速开始 →" [ref=e128] [cursor=pointer]:
+              - /url: quickstart/agent.html
+              - img [ref=e129]
+              - heading "ReAct 推理" [level=3] [ref=e131]
+              - paragraph [ref=e132]: 自主规划、工具调用与结果整合。内置安全中断、优雅取消与 Hook 人机协作，自主性与可控性兼得。
+              - generic [ref=e133]: 快速开始 →
+            - link "记忆 & RAG 跨会话持久化记忆，支持语义检索。后台自动整理长期记忆，防止上下文无限膨胀，多租户隔离开箱即用。 了解记忆 →" [ref=e134] [cursor=pointer]:
+              - /url: harness/memory.html
+              - img [ref=e135]
+              - heading "记忆 & RAG" [level=3] [ref=e137]
+              - paragraph [ref=e138]: 跨会话持久化记忆，支持语义检索。后台自动整理长期记忆，防止上下文无限膨胀，多租户隔离开箱即用。
+              - generic [ref=e139]: 了解记忆 →
+            - link "MCP 协议 接入任意 MCP 兼容服务器——文件系统、数据库、浏览器、代码解释器，扩展 Agent 工具能力无需自定义集成代码。 查看 MCP →" [ref=e140] [cursor=pointer]:
+              - /url: task/mcp.html
+              - img [ref=e141]
+              - heading "MCP 协议" [level=3] [ref=e143]
+              - paragraph [ref=e144]: 接入任意 MCP 兼容服务器——文件系统、数据库、浏览器、代码解释器，扩展 Agent 工具能力无需自定义集成代码。
+              - generic [ref=e145]: 查看 MCP →
+            - link "A2A 协议 将 Agent 注册到 Nacos 等服务发现中心，其他 Agent 可像调用微服务一样动态发现和委派任务。 查看 A2A →" [ref=e146] [cursor=pointer]:
+              - /url: task/a2a.html
+              - img [ref=e147]
+              - heading "A2A 协议" [level=3] [ref=e149]
+              - paragraph [ref=e150]: 将 Agent 注册到 Nacos 等服务发现中心，其他 Agent 可像调用微服务一样动态发现和委派任务。
+              - generic [ref=e151]: 查看 A2A →
+            - link "沙箱隔离 工具执行在隔离环境（本地 Unix / Docker / E2B）内完成。多轮对话间沙箱状态完整保留，支持跨会话快照恢复。 了解沙箱 →" [ref=e152] [cursor=pointer]:
+              - /url: harness/sandbox/index.html
+              - img [ref=e153]
+              - heading "沙箱隔离" [level=3] [ref=e155]
+              - paragraph [ref=e156]: 工具执行在隔离环境（本地 Unix / Docker / E2B）内完成。多轮对话间沙箱状态完整保留，支持跨会话快照恢复。
+              - generic [ref=e157]: 了解沙箱 →
+            - link "可观测性 可插拔 Tracer SPI，原生支持 OpenTelemetry 分布式追踪。AgentScope Studio 提供可视化调试与实时监控面板。 查看 Studio →" [ref=e158] [cursor=pointer]:
+              - /url: task/observability.html
+              - img [ref=e159]
+              - heading "可观测性" [level=3] [ref=e161]
+              - paragraph [ref=e162]: 可插拔 Tracer SPI，原生支持 OpenTelemetry 分布式追踪。AgentScope Studio 提供可视化调试与实时监控面板。
+              - generic [ref=e163]: 查看 Studio →
+        - generic [ref=e164]:
+          - heading "准备好构建了吗？" [level=2] [ref=e165]
+          - paragraph [ref=e166]: 几分钟内运行你的第一个 Agent。从基础 ReActAgent 起步，按需叠加 Harness 工程化、多智能体与企业级能力——同一套 API，线性增长复杂度。
+          - link "开始构建 →" [ref=e167] [cursor=pointer]:
+            - /url: quickstart/installation.html
+        - generic [ref=e168]:
+          - generic [ref=e169]:
+            - heading "常见问题" [level=2] [ref=e170]
+            - paragraph [ref=e171]:
+              - text: 还有疑问？欢迎在
+              - link "GitHub Discussions" [ref=e172] [cursor=pointer]:
+                - /url: https://github.com/agentscope-ai/agentscope-java/discussions
+              - text: 提问。
+          - group [ref=e173]:
+            - generic "AgentScope Java 需要什么 Java 版本？ +" [ref=e174] [cursor=pointer]
+          - group [ref=e175]:
+            - generic "支持哪些 LLM 提供商？ +" [ref=e176] [cursor=pointer]
+          - group [ref=e177]:
+            - generic "Harness 和普通 ReActAgent 有什么区别？ +" [ref=e178] [cursor=pointer]
+          - group [ref=e179]:
+            - generic "可以和 Spring Boot / Quarkus 一起使用吗？ +" [ref=e180] [cursor=pointer]
+          - group [ref=e181]:
+            - generic "如何在生产环境中水平扩展？ +" [ref=e182] [cursor=pointer]
+    - contentinfo [ref=e183]:
+      - generic [ref=e184]:
+        - link "Next 安装" [ref=e185] [cursor=pointer]:
+          - /url: quickstart/installation.html
+          - generic [ref=e186]:
+            - generic [ref=e188]: Next
+            - generic [ref=e189]: 安装
+          - img [ref=e190]
+        - link "Previous Core contributors" [ref=e192] [cursor=pointer]:
+          - /url: ../en/community/contributors.html
+          - img [ref=e193]
+          - generic [ref=e195]:
+            - generic [ref=e197]: Previous
+            - generic [ref=e198]: Core contributors
+      - generic [ref=e199]:
+        - generic [ref=e200]:
+          - generic [ref=e201]: Copyright © 2025, Tongyi Lab, Alibaba Inc.
+          - text: Made with
+          - link "Furo" [ref=e202] [cursor=pointer]:
+            - /url: https://github.com/pradyunsg/furo
+          - generic [ref=e203]: Last updated on 2026-05-15
+        - generic [ref=e205]:
+          - link "GitHub" [ref=e206] [cursor=pointer]:
+            - /url: https://github.com/agentscope-ai/agentscope-java
+            - img [ref=e207]
+          - link "Discord" [ref=e209] [cursor=pointer]:
+            - /url: https://discord.gg/eYMpfnkG8h
+            - img [ref=e210]
+          - link "DingTalk" [ref=e213] [cursor=pointer]:
+            - /url: https://qr.dingtalk.com/action/joingroup?code=v1,k1,OmDlBXpjW+I2vWjKDsjvI9dhcXjGZi3bQiojOq3dlDw=&_dt_no_comment=1&origin=11
+            - img [ref=e214]

@@ -1,0 +1,8 @@
+[    1490ms] [WARNING] document.domain mutation is ignored because the surrounding agent cluster is origin-keyed. @ https://g.csdnimg.cn/??lib/jquery/1.12.4/jquery.min.js,user-tooltip/2.7/user-tooltip.js,lib/qrcode/1.0.0/qrcode.min.js:5
+[    1491ms] [LOG] 请勿使用调试模式，会影响验证码等功能无法正常运行 @ https://www.csdn.net/cdn_cgi_bs_captcha/static/js/waf_captcha_embedded_bs.js:0
+[    1491ms] [DIR] 请勿使用调试模式，会影响验证码等功能无法正常运行 @ https://www.csdn.net/cdn_cgi_bs_captcha/static/js/waf_captcha_embedded_bs.js:0
+[    1708ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ https://www.csdn.net/:0
+[    1919ms] [ERROR] Access to XMLHttpRequest at 'https://blog.csdn.net/phoenix/web/get-www-ab-test' from origin 'https://www.csdn.net' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ https://www.csdn.net/:0
+[    1919ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://blog.csdn.net/phoenix/web/get-www-ab-test:0
+[    1940ms] [ERROR] Access to XMLHttpRequest at 'https://blog.csdn.net/phoenix/web/v1/get-toolbar-bubbles' from origin 'https://www.csdn.net' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ https://www.csdn.net/:0
+[    1941ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://blog.csdn.net/phoenix/web/v1/get-toolbar-bubbles:0
