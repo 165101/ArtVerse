@@ -21,4 +21,10 @@ public interface ChapterRepository extends JpaRepository<Chapter, Long> {
 
     @Query("SELECT c FROM Chapter c WHERE c.story.id = :storyId AND c.chapterNumber <= :maxChapter ORDER BY c.chapterNumber ASC")
     List<Chapter> findByStoryIdUpToChapter(@Param("storyId") Long storyId, @Param("maxChapter") int maxChapter);
+
+    @Query("SELECT DISTINCT c FROM Chapter c LEFT JOIN FETCH c.images LEFT JOIN FETCH c.messages WHERE c.id = :id")
+    Optional<Chapter> findByIdWithDetails(@Param("id") Long id);
+
+    @Query("SELECT DISTINCT c FROM Chapter c LEFT JOIN FETCH c.images LEFT JOIN FETCH c.messages WHERE c.story.id = :storyId ORDER BY c.chapterNumber ASC")
+    List<Chapter> findByStoryIdWithDetails(@Param("storyId") Long storyId);
 }

@@ -28,6 +28,13 @@ public class StaticMediaController {
     @GetMapping("/**")
     public void serveImage(HttpServletRequest request, HttpServletResponse response) {
         String path = request.getRequestURI().substring("/static/manga/".length());
+
+        // Strip _thumb/ prefix — the frontend uses /static/manga/_thumb/... URLs
+        // but MinIO object keys do not include the _thumb/ segment.
+        if (path.startsWith("_thumb/")) {
+            path = path.substring("_thumb/".length());
+        }
+
         mediaStorageService.validateImagePath(path);
 
         Path localPath = mediaStorageService.resolveRelativePath(path);

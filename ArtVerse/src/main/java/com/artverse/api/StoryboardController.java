@@ -1,7 +1,11 @@
 package com.artverse.api;
 
+import com.artverse.application.ApiKeyService;
 import com.artverse.application.SceneService;
+import com.artverse.domain.User;
+import com.artverse.persistence.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -13,10 +17,15 @@ import java.util.Map;
 public class StoryboardController {
 
     private final SceneService sceneService;
+    private final UserRepository userRepository;
+    private final ApiKeyService apiKeyService;
 
     @PostMapping("/generate-scenes")
     public Map<String, List<String>> generateScenes(@PathVariable Long chapterId) {
-        List<String> scenes = sceneService.generateScenes(chapterId);
+        Long userId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        User user = userRepository.findById(userId).orElseThrow();
+        String cozeApiKey = apiKeyService.getDecryptedKey(user, "coze");
+        List<String> scenes = sceneService.generateScenes(chapterId, cozeApiKey);
         return Map.of("scenes", scenes);
     }
 

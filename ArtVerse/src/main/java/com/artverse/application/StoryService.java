@@ -66,4 +66,16 @@ public class StoryService {
         story.setCoverImage(coverImagePath);
         return storyRepository.save(story);
     }
+
+    @Transactional(readOnly = true)
+    public String getMangaStyle(Long id) {
+        Story story = getRequired(id);
+        return story.getMangaStyle() != null ? story.getMangaStyle() : "japanese";
+    }
+
+    @Transactional
+    public String setMangaStyle(Long id, String mangaStyle) {
+        storyRepository.setMangaStyle(id, mangaStyle);
+        return mangaStyle;
+    }
 }

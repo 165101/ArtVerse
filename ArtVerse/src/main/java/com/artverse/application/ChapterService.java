@@ -28,12 +28,12 @@ public class ChapterService {
 
     @Transactional(readOnly = true)
     public List<Chapter> listByStory(Long storyId) {
-        return chapterRepository.findByStoryIdOrderByChapterNumberAsc(storyId);
+        return chapterRepository.findByStoryIdWithDetails(storyId);
     }
 
     @Transactional(readOnly = true)
     public Chapter getRequired(Long id) {
-        return chapterRepository.findById(id)
+        return chapterRepository.findByIdWithDetails(id)
                 .orElseThrow(() -> new BusinessException(404, "Chapter not found"));
     }
 
@@ -81,9 +81,6 @@ public class ChapterService {
         Chapter chapter = getRequired(id);
         if (chapter.getImages() != null && !chapter.getImages().isEmpty()) {
             throw new BusinessException(409, "Cannot change image count after manga images exist");
-        }
-        if (chapter.getScenesText() != null && !chapter.getScenesText().isBlank()) {
-            throw new BusinessException(409, "Cannot change image count after scenes exist");
         }
         chapter.setImageCount(imageCount);
         return chapterRepository.save(chapter);

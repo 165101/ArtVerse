@@ -11,17 +11,20 @@ import com.artverse.persistence.ChapterRepository;
 import com.artverse.persistence.MangaImageRepository;
 import com.artverse.storage.ObjectStorageService;
 import com.artverse.storage.StoredObject;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -49,7 +52,8 @@ public class MangaGenerationService {
         executor = Executors.newCachedThreadPool();
     }
 
-    public SseEmitter generateMangaStream(Long chapterId, String imageApiKey) {
+    @Transactional
+    public SseEmitter generateMangaStream(Long chapterId, String imageApiKey, String deepseekApiKey) {
         Chapter chapter = chapterRepository.findById(chapterId)
                 .orElseThrow(() -> new BusinessException(404, "Chapter not found"));
 
@@ -66,6 +70,12 @@ public class MangaGenerationService {
             throw new BusinessException(400, "Scenes count (" + scenes.size() + ") does not match image count (" + chapter.getImageCount() + ")");
         }
 
+        // Eagerly resolve lazy proxies before handing off to background thread
+        Long storyId = chapter.getStory().getId();
+        String mangaStyle = chapter.getStory().getMangaStyle();
+        String storyRefImage = chapter.getStory().getRefImage();
+        Long assetGroupId = chapter.getAssetGroup() != null ? chapter.getAssetGroup().getId() : null;
+
         MangaGenerationJob job = new MangaGenerationJob(chapterId, scenes);
         activeJobs.put(chapterId, job);
 
@@ -73,22 +83,27 @@ public class MangaGenerationService {
         job.addSubscriber(emitter);
 
         // Start generation in background
-        executor.submit(() -> runGenerationJob(job, chapter, imageApiKey));
+        executor.submit(() -> runGenerationJob(job, chapter, storyId, mangaStyle, storyRefImage, assetGroupId, imageApiKey, deepseekApiKey));
 
         return emitter;
     }
 
-    private void runGenerationJob(MangaGenerationJob job, Chapter chapter, String imageApiKey) {
+    private void runGenerationJob(MangaGenerationJob job, Chapter chapter, Long storyId, String mangaStyle,
+                                   String storyRefImage, Long assetGroupId, String imageApiKey, String deepseekApiKey) {
         try {
             // Send scenes event
-            job.broadcastEvent("event: scenes\ndata: " + objectMapper.writeValueAsString(Map.of("scenes", job.getScenes())) + "\n\n");
+            job.broadcastEvent("scenes", objectMapper.writeValueAsString(Map.of("scenes", job.getScenes())));
 
             Map<String, Object> profileResult = characterProfileService.resolveEffective(chapter.getId());
             String profiles = (String) profileResult.get("content");
+            if (mangaStyle == null || mangaStyle.isBlank()) mangaStyle = "japanese";
+            String colorMode = chapter.getColorMode().name().toLowerCase();
 
-            List<Path> refImages = computeEffectiveRefImages(chapter);
+            List<Path> refImages = computeEffectiveRefImages(storyId, chapter.getId(), chapter.getRefImage(),
+                    assetGroupId, storyRefImage);
             List<Path> tempRefImages = new ArrayList<>();
             List<Path> imageRequestRefs = materializeMinioRefs(refImages, tempRefImages);
+            boolean hasRefImages = !imageRequestRefs.isEmpty();
 
             try {
                 for (int i = 0; i < job.getScenes().size(); i++) {
@@ -102,69 +117,91 @@ public class MangaGenerationService {
                     if (existing.isPresent()) {
                         MangaImage img = existing.get();
                         String url = "/static/manga/" + img.getImagePath();
-                        job.broadcastEvent("event: image\ndata: " + objectMapper.writeValueAsString(Map.of(
+                        job.broadcastEvent("progress", objectMapper.writeValueAsString(Map.of(
+                                "image_number", imageNumber,
+                                "total", job.getScenes().size()
+                        )));
+                        job.broadcastEvent("image", objectMapper.writeValueAsString(Map.of(
                                 "image_number", imageNumber,
                                 "image_path", img.getImagePath(),
                                 "url", url
-                        )) + "\n\n");
+                        )));
                         continue;
                     }
 
-                    // Send progress
-                    job.broadcastEvent("event: progress\ndata: " + objectMapper.writeValueAsString(Map.of(
-                            "image_number", imageNumber,
-                            "total", job.getScenes().size(),
-                            "message", "Generating page " + imageNumber + "/" + job.getScenes().size()
-                    )) + "\n\n");
+                    // Build prompt with full context
+                    String prompt = buildImagePrompt(scene, profiles, mangaStyle, colorMode, hasRefImages, job.getScenes(), imageNumber);
 
-                    // Build prompt
-                    String prompt = buildImagePrompt(scene, profiles, chapter.getColorMode());
+                    // Optimize prompt via DeepSeek
+                    String optimizedPrompt = optimizePrompt(prompt, deepseekApiKey);
 
-                    // Generate image
-                    ImageGenerationRequest request = new ImageGenerationRequest(
-                            prompt,
-                            properties.getImage().getModel(),
-                            properties.getImage().getSize(),
-                            imageRequestRefs,
-                            chapter.getColorMode().name().toLowerCase()
-                    );
+                    // Retry up to 3 times
+                    Exception lastException = null;
+                    boolean success = false;
+                    for (int attempt = 0; attempt < 3; attempt++) {
+                        if (!job.isRunning()) break;
+                        try {
+                            // Generate image
+                            GeneratedImage generated = generateImageForJob(chapter, imageRequestRefs, imageApiKey, optimizedPrompt);
 
-                    GeneratedImage generated = image2Client.generate(request, imageApiKey).block();
-                    if (generated == null) {
-                        throw new BusinessException(502, "Image generation returned null for page " + imageNumber);
+                            // Upload to MinIO
+                            String filename = mediaStorageService.generateUniqueFilename("panel_" + String.format("%02d", imageNumber), ".png");
+                            String objectKey = "stories/" + storyId + "/chapters/" + chapter.getId() + "/panels/" + filename;
+                            StoredObject stored = objectStorageService.putPng(objectKey, generated.localFile(), "image/png");
+
+                            // Save to DB
+                            MangaImage mangaImage = new MangaImage();
+                            mangaImage.setChapter(chapter);
+                            mangaImage.setImageNumber(imageNumber);
+                            mangaImage.setImagePath(stored.objectKey());
+                            mangaImage.setStorageProvider(StorageProvider.MINIO);
+                            mangaImage.setBucket(stored.bucket());
+                            mangaImage.setObjectKey(stored.objectKey());
+                            mangaImage.setContentType(stored.contentType());
+                            mangaImage.setSizeBytes(stored.sizeBytes());
+                            mangaImage.setPrompt(optimizedPrompt);
+                            mangaImageRepository.save(mangaImage);
+
+                            // Send progress (after successful generation)
+                            job.broadcastEvent("progress", objectMapper.writeValueAsString(Map.of(
+                                    "image_number", imageNumber,
+                                    "total", job.getScenes().size()
+                            )));
+
+                            // Send image event
+                            String url = "/static/manga/" + mangaImage.getImagePath();
+                            job.broadcastEvent("image", objectMapper.writeValueAsString(Map.of(
+                                    "image_number", imageNumber,
+                                    "image_path", mangaImage.getImagePath(),
+                                    "url", url
+                            )));
+
+                            // Cleanup temp file
+                            try {
+                                Files.deleteIfExists(generated.localFile());
+                                Files.deleteIfExists(generated.localFile().getParent());
+                            } catch (Exception ignored) {
+                            }
+                            success = true;
+                            break;
+                        } catch (Exception e) {
+                            lastException = e;
+                            log.warn("Failed to generate image {}/{} for chapter {} (attempt {}/3): {}",
+                                    imageNumber, job.getScenes().size(), chapter.getId(), attempt + 1, e.getMessage());
+                        }
                     }
 
-                    // Upload to MinIO
-                    String filename = mediaStorageService.generateUniqueFilename("panel_" + String.format("%02d", imageNumber), ".png");
-                    String objectKey = "stories/" + chapter.getStory().getId() + "/chapters/" + chapter.getId() + "/panels/" + filename;
-                    StoredObject stored = objectStorageService.putPng(objectKey, generated.localFile(), "image/png");
-
-                    // Save to DB
-                    MangaImage mangaImage = new MangaImage();
-                    mangaImage.setChapter(chapter);
-                    mangaImage.setImageNumber(imageNumber);
-                    mangaImage.setImagePath(stored.objectKey());
-                    mangaImage.setStorageProvider(StorageProvider.MINIO);
-                    mangaImage.setBucket(stored.bucket());
-                    mangaImage.setObjectKey(stored.objectKey());
-                    mangaImage.setContentType(stored.contentType());
-                    mangaImage.setSizeBytes(stored.sizeBytes());
-                    mangaImage.setPrompt(prompt);
-                    mangaImageRepository.save(mangaImage);
-
-                    // Send image event
-                    String url = "/static/manga/" + mangaImage.getImagePath();
-                    job.broadcastEvent("event: image\ndata: " + objectMapper.writeValueAsString(Map.of(
-                            "image_number", imageNumber,
-                            "image_path", mangaImage.getImagePath(),
-                            "url", url
-                    )) + "\n\n");
-
-                    // Cleanup temp file
-                    try {
-                        Files.deleteIfExists(generated.localFile());
-                        Files.deleteIfExists(generated.localFile().getParent());
-                    } catch (Exception ignored) {
+                    if (!success && lastException != null) {
+                        log.error("Failed to generate image {}/{} for chapter {} after 3 attempts: {}",
+                                imageNumber, job.getScenes().size(), chapter.getId(), lastException.getMessage());
+                        try {
+                            job.broadcastEvent("image_error", objectMapper.writeValueAsString(Map.of(
+                                    "image_number", imageNumber,
+                                    "total", job.getScenes().size(),
+                                    "error", lastException.getMessage()
+                            )));
+                        } catch (Exception ignored) {
+                        }
                     }
                 }
             } finally {
@@ -172,13 +209,13 @@ public class MangaGenerationService {
             }
 
             // Send done
-            job.broadcastEvent("event: done\ndata: " + objectMapper.writeValueAsString(Map.of("images", job.getScenes().size())) + "\n\n");
+            job.broadcastEvent("done", objectMapper.writeValueAsString(Map.of("images", job.getScenes().size())));
             job.complete();
 
         } catch (Exception e) {
             log.error("Manga generation failed for chapter {}: {}", chapter.getId(), e.getMessage(), e);
             try {
-                job.broadcastEvent("event: error\ndata: " + objectMapper.writeValueAsString(Map.of("detail", e.getMessage())) + "\n\n");
+                job.broadcastEvent("error", objectMapper.writeValueAsString(Map.of("detail", e.getMessage())));
             } catch (Exception ignored) {
             }
             job.error(e.getMessage());
@@ -187,8 +224,29 @@ public class MangaGenerationService {
         }
     }
 
+    GeneratedImage generateImageForJob(Chapter chapter, List<Path> imageRequestRefs, String imageApiKey, String prompt) {
+        ImageGenerationRequest request = new ImageGenerationRequest(
+                prompt,
+                properties.getImage().getModel(),
+                properties.getImage().getSize(),
+                imageRequestRefs,
+                chapter.getColorMode().name().toLowerCase()
+        );
+
+        GeneratedImage generated;
+        try {
+            generated = image2Client.generate(request, imageApiKey).block(Duration.ofSeconds(600));
+        } catch (Exception e) {
+            throw new BusinessException(502, "Image generation timed out or failed: " + e.getMessage());
+        }
+        if (generated == null) {
+            throw new BusinessException(502, "Image generation returned null");
+        }
+        return generated;
+    }
+
     @Transactional
-    public MangaImage regenerateImage(Long chapterId, int imageNumber, String prompt, String imageApiKey) {
+    public MangaImage regenerateImage(Long chapterId, int imageNumber, String prompt, String imageApiKey, String deepseekApiKey) {
         Chapter chapter = chapterRepository.findById(chapterId)
                 .orElseThrow(() -> new BusinessException(404, "Chapter not found"));
 
@@ -209,14 +267,22 @@ public class MangaGenerationService {
 
         Map<String, Object> profileResult = characterProfileService.resolveEffective(chapterId);
         String profiles = (String) profileResult.get("content");
-        List<Path> refImages = computeEffectiveRefImages(chapter);
+        String mangaStyle = chapter.getStory().getMangaStyle();
+        if (mangaStyle == null || mangaStyle.isBlank()) mangaStyle = "japanese";
+        String colorMode = chapter.getColorMode().name().toLowerCase();
+        List<Path> refImages = computeEffectiveRefImages(
+                chapter.getStory().getId(), chapter.getId(), chapter.getRefImage(),
+                chapter.getAssetGroup() != null ? chapter.getAssetGroup().getId() : null,
+                chapter.getStory().getRefImage());
         List<Path> tempRefImages = new ArrayList<>();
         List<Path> imageRequestRefs = materializeMinioRefs(refImages, tempRefImages);
+        boolean hasRefImages = !imageRequestRefs.isEmpty();
 
-        String fullPrompt = buildImagePrompt(prompt, profiles, chapter.getColorMode());
+        String fullPrompt = buildImagePrompt(prompt, profiles, mangaStyle, colorMode, hasRefImages, scenes.isEmpty() ? List.of(prompt) : scenes, imageNumber);
+        String optimizedPrompt = optimizePrompt(fullPrompt, deepseekApiKey);
 
         ImageGenerationRequest request = new ImageGenerationRequest(
-                fullPrompt,
+                optimizedPrompt,
                 properties.getImage().getModel(),
                 properties.getImage().getSize(),
                 imageRequestRefs,
@@ -254,7 +320,7 @@ public class MangaGenerationService {
             existing.setObjectKey(stored.objectKey());
             existing.setContentType(stored.contentType());
             existing.setSizeBytes(stored.sizeBytes());
-            existing.setPrompt(fullPrompt);
+            existing.setPrompt(optimizedPrompt);
             MangaImage saved = mangaImageRepository.save(existing);
 
             // Delete old object after successful save
@@ -274,7 +340,7 @@ public class MangaGenerationService {
             mangaImage.setObjectKey(stored.objectKey());
             mangaImage.setContentType(stored.contentType());
             mangaImage.setSizeBytes(stored.sizeBytes());
-            mangaImage.setPrompt(fullPrompt);
+            mangaImage.setPrompt(optimizedPrompt);
             MangaImage saved = mangaImageRepository.save(mangaImage);
 
             cleanupTempFile(generated.localFile());
@@ -301,28 +367,29 @@ public class MangaGenerationService {
         }
     }
 
-    private List<Path> computeEffectiveRefImages(Chapter chapter) {
+    private List<Path> computeEffectiveRefImages(Long storyId, Long chapterId, String chapterRefImage,
+                                                 Long assetGroupId, String storyRefImage) {
         List<Path> refs = new ArrayList<>();
 
-        addMinioRefs(refs, "stories/" + chapter.getStory().getId() + "/chapters/" + chapter.getId() + "/ref_images/");
+        addMinioRefs(refs, "stories/" + storyId + "/chapters/" + chapterId + "/ref_images/");
 
         // Chapter old single ref
-        if (refs.isEmpty() && chapter.getRefImage() != null && !chapter.getRefImage().isBlank()) {
-            Path ref = mediaStorageService.resolveRelativePath(chapter.getRefImage());
+        if (refs.isEmpty() && chapterRefImage != null && !chapterRefImage.isBlank()) {
+            Path ref = mediaStorageService.resolveRelativePath(chapterRefImage);
             if (ref != null && Files.exists(ref)) refs.add(ref);
         }
 
-        if (refs.isEmpty() && chapter.getAssetGroup() != null) {
-            addMinioRefs(refs, "stories/" + chapter.getStory().getId() + "/asset_groups/" + chapter.getAssetGroup().getId() + "/ref_images/");
+        if (refs.isEmpty() && assetGroupId != null) {
+            addMinioRefs(refs, "stories/" + storyId + "/asset_groups/" + assetGroupId + "/ref_images/");
         }
 
         if (refs.isEmpty()) {
-            addMinioRefs(refs, "stories/" + chapter.getStory().getId() + "/ref_images/");
+            addMinioRefs(refs, "stories/" + storyId + "/ref_images/");
         }
 
         // Story old single ref
-        if (refs.isEmpty() && chapter.getStory().getRefImage() != null && !chapter.getStory().getRefImage().isBlank()) {
-            Path ref = mediaStorageService.resolveRelativePath(chapter.getStory().getRefImage());
+        if (refs.isEmpty() && storyRefImage != null && !storyRefImage.isBlank()) {
+            Path ref = mediaStorageService.resolveRelativePath(storyRefImage);
             if (ref != null && Files.exists(ref)) refs.add(ref);
         }
 
@@ -379,24 +446,153 @@ public class MangaGenerationService {
         return name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp");
     }
 
-    private String buildImagePrompt(String scene, String profiles, ColorMode colorMode) {
+    private String optimizePrompt(String prompt, String deepseekApiKey) {
+        if (deepseekApiKey == null || deepseekApiKey.isBlank()) return prompt;
+        try {
+            var body = Map.of(
+                    "model", "deepseek-chat",
+                    "messages", List.of(
+                            Map.of("role", "system", "content",
+                                    "You are a professional AI art prompt optimizer. Enhance the given manga panel description into a more detailed, visually rich English prompt for image generation. Add composition, lighting, color, detail descriptions. Strictly preserve the original intent. IMPORTANT: Do NOT include any page numbers, panel numbers, fractions, or ordinal text in the prompt. Output only the optimized prompt, no explanations."),
+                            Map.of("role", "user", "content", prompt)
+                    ),
+                    "temperature", 0.7,
+                    "max_tokens", 1024
+            );
+
+            WebClient client = WebClient.builder()
+                    .baseUrl(properties.getDeepseek().getBaseUrl())
+                    .codecs(c -> c.defaultCodecs().maxInMemorySize(16 * 1024 * 1024))
+                    .build();
+
+            String response = client.post()
+                    .uri("/chat/completions")
+                    .header("Authorization", "Bearer " + deepseekApiKey)
+                    .header("Content-Type", "application/json")
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block(Duration.ofSeconds(30));
+
+            JsonNode node = objectMapper.readTree(response);
+            String optimized = node.path("choices").path(0).path("message").path("content").asText();
+            if (optimized != null && !optimized.isBlank()) {
+                log.info("Prompt optimized successfully for image, length: {} -> {}", prompt.length(), optimized.length());
+                return optimized;
+            }
+        } catch (Exception e) {
+            log.warn("Prompt optimization failed, using original: {}", e.getMessage());
+        }
+        return prompt;
+    }
+
+    private String buildImagePrompt(String scene, String profiles, String mangaStyle, String colorMode,
+                                     boolean hasRefImages, List<String> allScenes, int imageNumber) {
         StringBuilder sb = new StringBuilder();
 
-        if (colorMode == ColorMode.BW) {
-            sb.append("Japanese manga style black and white page, vertical multi-panel layout, clear panel borders, ");
-            sb.append("Chinese speech bubbles, sound effects, high contrast lighting, fine lines and screentone. ");
-        } else {
-            sb.append("Japanese manga style color illustration page, cel-shading, vibrant colors, soft lighting, ");
-            sb.append("Chinese speech bubbles, sound effects. ");
+        if (hasRefImages) {
+            sb.append("【最重要：人物一致性】\n");
+            sb.append("本次提供了参考图，**必须严格保持参考图中主角的外貌特征**：");
+            sb.append("包括发型、发色、瞳色、脸型、五官比例、服装风格——所有分镜格中的人物都必须是参考图中的同一批人物。\n");
+            sb.append("禁止凭空创造新的人物外貌。\n\n");
         }
 
-        if (profiles != null && !profiles.isBlank()) {
-            sb.append("Character profiles: ").append(profiles).append(". ");
+        if (!hasRefImages && profiles != null && !profiles.isBlank()) {
+            sb.append("【角色外貌设定（每张图必须严格遵守）】\n");
+            sb.append(profiles).append("\n\n");
         }
 
-        sb.append("Scene: ").append(scene);
+        int totalPages = allScenes.size();
+
+        sb.append("你正在绘制一部").append(styleLabel(mangaStyle, colorMode)).append("的第").append(imageNumber).append("页（共").append(totalPages).append("页）。\n\n");
+
+        sb.append("以下是完整的").append(totalPages).append("页分镜脚本，请保持人物外貌、服装、风格的一致性：\n\n");
+        for (int i = 0; i < allScenes.size(); i++) {
+            sb.append("第").append(i + 1).append("页：").append(allScenes.get(i)).append("\n");
+        }
+        sb.append("\n");
+
+        sb.append("现在请绘制本页内容：\n");
+        sb.append(styleTemplate(mangaStyle)).append("\n");
+        sb.append(colorModifier(colorMode)).append("\n");
+        sb.append(scene).append("\n\n");
+
+        sb.append("【严格禁止】\n");
+        sb.append("- 图片中绝对不能出现任何页码数字、编号、分数（如\"1/8\"\"第1页\"\"Page 1\"）等文字\n");
+        sb.append("- 不能出现\"第几张\"\"几分之几\"等任何计数标记\n");
+        sb.append("- 图片是纯粹的漫画画面，不含任何排版标记");
 
         return sb.toString();
+    }
+
+    private String styleLabel(String mangaStyle, String colorMode) {
+        String base = switch (mangaStyle) {
+            case "korean" -> "韩式条漫";
+            case "american" -> "美式漫画";
+            case "european" -> "欧式清线漫画";
+            case "chinese_ink" -> "水墨国风漫画";
+            case "semi_realistic" -> "半厚涂写实漫画";
+            default -> "日式漫画";
+        };
+        String colorTag = switch (colorMode != null ? colorMode : "bw") {
+            case "grayscale" -> "（灰度）";
+            case "color" -> "（彩色）";
+            case "duotone" -> "（双色调）";
+            default -> "（黑白）";
+        };
+        return base + colorTag;
+    }
+
+    private String styleTemplate(String mangaStyle) {
+        return switch (mangaStyle) {
+            case "korean" -> """
+                    韩式条漫风格，竖向滚动式构图，干净线条和自然渐变光影，\
+                    人物比例修长，表情细腻丰富，背景简约但氛围感强，\
+                    对话气泡现代简洁，适合手机竖屏阅读。""";
+            case "american" -> """
+                    美式漫画风格，粗重有力的线条，饱和鲜艳的色块，\
+                    动态夸张的构图和透视角度，人物肌肉线条分明，\
+                    表情夸张生动，巨大的拟声词字体（BOOM！POW！），\
+                    高对比度的阴影和强光效果，动作场面视觉冲击力强。""";
+            case "european" -> """
+                    欧式清线（Ligne Claire）漫画风格，均匀一致的线条粗细，\
+                    平涂色彩块面，无交叉阴影线，精细描绘的背景环境和建筑，\
+                    人物造型简洁清晰，画面干净明朗，叙事感强。""";
+            case "chinese_ink" -> """
+                    中国水墨国风漫画，水墨渲染意境深远，工笔线条飘逸灵动，\
+                    大面积的留白构图，传统山水花鸟元素融入场景，\
+                    人物服饰和造型带有中国传统美学特色，\
+                    墨色浓淡变化丰富，笔触写意洒脱。""";
+            case "semi_realistic" -> """
+                    半厚涂写实风格，日系角色比例结合写实材质渲染，\
+                    皮肤质感细腻有渐变层次，布料金属等材质表现力强，\
+                    光影柔和自然，色彩层次丰富，画面完成度高，\
+                    兼具动漫美感与写实厚重感。""";
+            default -> """
+                    日式漫画风格，竖向多格分镜布局，每页包含4-6个分镜格，\
+                    格子高度不等（动作场景用宽格，对话特写用窄格），\
+                    每个分镜格之间有清晰的边框分隔，\
+                    包含圆形/椭圆形对话气泡和中文台词，\
+                    包含漫画音效字（如"唰—""铿！""嗡—"），\
+                    精细的线条和网点，人物绘制精美，表情生动，动作有力度感。""";
+        };
+    }
+
+    private String colorModifier(String colorMode) {
+        return switch (colorMode != null ? colorMode : "bw") {
+            case "grayscale" -> """
+                    灰度色彩模式：使用灰阶过渡表现光影，柔和细腻的素描质感，\
+                    避免纯黑纯白，保留丰富的中间灰色层次。""";
+            case "color" -> """
+                    全彩色彩模式：高饱和度配色，赛璐珞风格上色，\
+                    柔和光影与高光，细腻的色彩渐变，丰富的色彩层次。""";
+            case "duotone" -> """
+                    双色调色彩模式：双色印刷风格，使用冷暖对比色调，\
+                    复古印刷质感，有限的色彩范围创造强烈的情绪氛围。""";
+            default -> """
+                    黑白色彩模式：高对比度黑白，戏剧性光影，网点纸纹理，\
+                    纯黑纯白基调，精细的线条表现力。""";
+        };
     }
 
     private List<String> resolveScenesForImageGeneration(Chapter chapter) {
@@ -405,17 +601,8 @@ public class MangaGenerationService {
             return scenes;
         }
 
-        String material = chapter.novelContentOrJoinedMessages();
-        if (material.isBlank()) {
-            throw new BusinessException(400, "No source content available for manga generation.");
-        }
-
-        int imageCount = chapter.getImageCount();
-        List<String> fallbackScenes = new ArrayList<>(imageCount);
-        for (int i = 0; i < imageCount; i++) {
-            fallbackScenes.add("Page " + (i + 1) + " of " + imageCount + ". Adapt this source content into a complete manga page: " + material);
-        }
-        return fallbackScenes;
+        throw new BusinessException(400,
+                "请先生成分镜再生成漫画。点击「生成分镜」按钮，AI 将为小说内容生成详细分镜脚本后再生成图片。");
     }
 
     private List<String> parseScenes(String scenesText) {

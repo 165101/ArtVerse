@@ -7,7 +7,9 @@ import lombok.Setter;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Entity
 @Table(name = "chapters",
@@ -67,7 +69,7 @@ public class Chapter {
     @OneToMany(mappedBy = "chapter", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("imageNumber ASC")
     @JsonIgnore
-    private List<MangaImage> images = new ArrayList<>();
+    private Set<MangaImage> images = new LinkedHashSet<>();
 
     @PrePersist
     protected void onCreate() {

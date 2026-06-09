@@ -15,6 +15,7 @@ import {
   getApiKeySettings,
   saveApiKeySettings,
   clearApiKeySettings,
+  saveUserApiKey,
   API_KEY_CHANGE_EVENT,
   DEEPSEEK_USAGE_URL,
   IMAGE2_CONSOLE_URL,
@@ -87,7 +88,7 @@ function useIsMobile() {
 function useApiKeyConfigured() {
   const read = () => {
     const s = getApiKeySettings();
-    return { deepseek: !!s.deepseekApiKey, image: !!s.imageApiKey };
+    return { deepseek: !!s.deepseekApiKey, image: !!s.imageApiKey, coze: !!s.cozeApiKey };
   };
   const [state, setState] = useState(read);
   useEffect(() => {
@@ -105,29 +106,42 @@ function useApiKeyConfigured() {
 function ApiKeySettingsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [deepseekApiKey, setDeepseekApiKey] = useState('');
   const [imageApiKey, setImageApiKey] = useState('');
+  const [cozeApiKey, setCozeApiKey] = useState('');
 
   useEffect(() => {
     if (!open) return;
     const settings = getApiKeySettings();
     setDeepseekApiKey(settings.deepseekApiKey);
     setImageApiKey(settings.imageApiKey);
+    setCozeApiKey(settings.cozeApiKey);
   }, [open]);
 
   if (!open) return null;
 
-  const handleSave = () => {
-    saveApiKeySettings({ deepseekApiKey, imageApiKey });
+  const handleSave = async () => {
+    saveApiKeySettings({ deepseekApiKey, imageApiKey, cozeApiKey });
+    // Sync to backend DB — each save independent so one failure doesn't block others
+    const sync = async (provider: string, key: string) => {
+      if (!key) return;
+      try { await saveUserApiKey(provider, key); } catch { /* non-critical */ }
+    };
+    await Promise.all([
+      sync('deepseek', deepseekApiKey),
+      sync('image2', imageApiKey),
+      sync('coze', cozeApiKey),
+    ]);
     onClose();
   };
 
   const handleClear = () => {
-    if (!window.confirm('确定要清除已保存的两个 API Key 吗？')) return;
+    if (!window.confirm('确定要清除已保存的所有 API Key 吗？')) return;
     clearApiKeySettings();
     setDeepseekApiKey('');
     setImageApiKey('');
+    setCozeApiKey('');
   };
 
-  const hasAny = !!(deepseekApiKey || imageApiKey);
+  const hasAny = !!(deepseekApiKey || imageApiKey || cozeApiKey);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
@@ -190,6 +204,29 @@ function ApiKeySettingsModal({ open, onClose }: { open: boolean; onClose: () => 
               className="w-full rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-sm text-gray-100 outline-none focus:border-amber-500"
             />
             <p className="text-xs text-gray-500">用于生成漫画图片和重新生成单张图片。</p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <label className="text-xs font-medium text-gray-300">Coze API Key</label>
+              <a
+                href="https://www.coze.cn"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-emerald-300 hover:text-emerald-200"
+              >
+                Coze 控制台
+                <ExternalLink size={12} />
+              </a>
+            </div>
+            <input
+              type="password"
+              value={cozeApiKey}
+              onChange={(e) => setCozeApiKey(e.target.value)}
+              placeholder="填入 Coze API Key"
+              className="w-full rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-sm text-gray-100 outline-none focus:border-emerald-500"
+            />
+            <p className="text-xs text-gray-500">用于 AI 生成分镜脚本（Coze 工作流）。</p>
           </div>
         </div>
 

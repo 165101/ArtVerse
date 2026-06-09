@@ -19,13 +19,13 @@ import java.util.List;
 public class ApiKeyService {
 
     private static final String ALGORITHM = "AES";
-    private static final byte[] ENCRYPTION_KEY = "ArtVerse!ApiKey12".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] ENCRYPTION_KEY = "ArtVerse!ApiKey1".getBytes(StandardCharsets.UTF_8);
 
     private final UserApiKeyRepository repository;
 
     @Transactional
     public void saveKey(User user, String provider, String apiKey) {
-        if (!List.of("deepseek", "image2").contains(provider)) {
+        if (!List.of("deepseek", "image2", "coze").contains(provider)) {
             throw new BusinessException(400, "Unsupported provider: " + provider);
         }
         String encrypted = encrypt(apiKey);

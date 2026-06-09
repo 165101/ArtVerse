@@ -109,32 +109,38 @@ export async function logoutUser(): Promise<void> {
 
 const LS_DEEPSEEK_API_KEY = 'lorevista.deepseekApiKey';
 const LS_IMAGE_API_KEY = 'lorevista.imageApiKey';
+const LS_COZE_API_KEY = 'lorevista.cozeApiKey';
 export const API_KEY_CHANGE_EVENT = 'lorevista:api-key-change';
 
 export interface ApiKeySettings {
   deepseekApiKey: string;
   imageApiKey: string;
+  cozeApiKey: string;
 }
 
 export function getApiKeySettings(): ApiKeySettings {
   return {
     deepseekApiKey: localStorage.getItem(LS_DEEPSEEK_API_KEY) || '',
     imageApiKey: localStorage.getItem(LS_IMAGE_API_KEY) || '',
+    cozeApiKey: localStorage.getItem(LS_COZE_API_KEY) || '',
   };
 }
 
 export function saveApiKeySettings(settings: ApiKeySettings): void {
   const deepseek = settings.deepseekApiKey.trim();
   const image = settings.imageApiKey.trim();
+  const coze = (settings.cozeApiKey || '').trim();
   if (deepseek) localStorage.setItem(LS_DEEPSEEK_API_KEY, deepseek);
   else localStorage.removeItem(LS_DEEPSEEK_API_KEY);
   if (image) localStorage.setItem(LS_IMAGE_API_KEY, image);
   else localStorage.removeItem(LS_IMAGE_API_KEY);
+  if (coze) localStorage.setItem(LS_COZE_API_KEY, coze);
+  else localStorage.removeItem(LS_COZE_API_KEY);
   try { window.dispatchEvent(new Event(API_KEY_CHANGE_EVENT)); } catch { /* ignore */ }
 }
 
 export function clearApiKeySettings(): void {
-  saveApiKeySettings({ deepseekApiKey: '', imageApiKey: '' });
+  saveApiKeySettings({ deepseekApiKey: '', imageApiKey: '', cozeApiKey: '' });
 }
 
 export async function getUserApiKeys(): Promise<{ provider: string; api_key_masked: string }[]> {
@@ -721,9 +727,47 @@ export async function deleteChapterRefImage(chapterId: number, filename: string)
   return res.json();
 }
 
-// ─── Color Mode ─────────────────────────────────────────────
+// ─── Manga Style (story-level) ───────────────────────────────
 
-export type ColorMode = 'bw' | 'color';
+export type MangaStyle = 'japanese' | 'korean' | 'american' | 'european' | 'chinese_ink' | 'semi_realistic';
+
+export const MANGA_STYLE_LABELS: Record<MangaStyle, string> = {
+  japanese: '日式漫画',
+  korean: '韩式条漫',
+  american: '美式漫画',
+  european: '欧式清线',
+  chinese_ink: '水墨国风',
+  semi_realistic: '半厚涂写实',
+};
+
+export async function getMangaStyle(storyId: number): Promise<MangaStyle> {
+  const res = await authFetch(`${BASE}/api/stories/${storyId}/manga-style`);
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.manga_style || 'japanese';
+}
+
+export async function setMangaStyle(storyId: number, style: MangaStyle): Promise<void> {
+  const res = await authFetch(`${BASE}/api/stories/${storyId}/manga-style`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ manga_style: style }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+// ─── Color Mode (chapter-level) ────────────────────────────────
+
+export type ColorMode = 'bw' | 'grayscale' | 'color' | 'duotone';
+
+export const COLOR_MODE_LABELS: Record<ColorMode, string> = {
+  bw: '黑白',
+  grayscale: '灰度',
+  color: '彩色',
+  duotone: '双色调',
+};
+
+// ─── Color Mode (chapter-level) ────────────────────────────────
 
 export async function getColorMode(chapterId: number): Promise<ColorMode> {
   const res = await authFetch(`${BASE}/api/chapters/${chapterId}/color-mode`);
@@ -778,7 +822,7 @@ export async function regenerateImage(
 // ─── Generate Manga (SSE with progress) ─────────────────────
 
 export interface MangaProgress {
-  type: 'status' | 'scenes' | 'progress' | 'image' | 'done' | 'error';
+  type: 'status' | 'scenes' | 'progress' | 'image' | 'image_error' | 'done' | 'error';
   data: any;
 }
 

@@ -9,5 +9,11 @@ public record AgentRunRequest(
     Long chapterId,
     AgentTaskType taskType,
     List<AgentMessage> messages,
-    Map<String, Object> variables
-) {}
+    Map<String, Object> variables,
+    String userApiKey
+) {
+    public AgentRunRequest(String userId, Long storyId, Long chapterId, AgentTaskType taskType,
+                           List<AgentMessage> messages, Map<String, Object> variables) {
+        this(userId, storyId, chapterId, taskType, messages, variables, null);
+    }
+}

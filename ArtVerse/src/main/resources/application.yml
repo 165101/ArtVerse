@@ -60,6 +60,10 @@ artverse:
     model: gpt-image-2
     size: 1024x1536
     api-key: ""
+  coze:
+    base-url: https://api.coze.cn
+    api-key: ""
+    workflow-id: "7645642109203103763"
   minio:
     endpoint: http://localhost:9000
     bucket: artverse-manga

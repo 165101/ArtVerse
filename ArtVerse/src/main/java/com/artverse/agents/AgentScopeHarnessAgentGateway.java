@@ -1,12 +1,15 @@
 package com.artverse.agents;
 
+import com.artverse.config.ArtVerseProperties;
 import io.agentscope.core.agent.EventType;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.model.Model;
+import io.agentscope.core.model.OpenAIChatModel;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
+import io.github.cdimascio.dotenv.Dotenv;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Primary;
@@ -29,15 +32,21 @@ public class AgentScopeHarnessAgentGateway implements HarnessAgentGateway {
     private final Model model;
     private final Path workspace;
     private final CompactionConfig compactionConfig;
+    private final ArtVerseProperties properties;
+    private final Dotenv dotenv;
     private final Map<String, HarnessAgent> agentCache = new ConcurrentHashMap<>();
 
     public AgentScopeHarnessAgentGateway(
             Model model,
             @Qualifier("agentScopeWorkspace") Path workspace,
-            CompactionConfig compactionConfig) {
+            CompactionConfig compactionConfig,
+            ArtVerseProperties properties,
+            Dotenv dotenv) {
         this.model = model;
         this.workspace = workspace;
         this.compactionConfig = compactionConfig;
+        this.properties = properties;
+        this.dotenv = dotenv;
     }
 
     @Override
@@ -76,18 +85,33 @@ public class AgentScopeHarnessAgentGateway implements HarnessAgentGateway {
     }
 
     private HarnessAgent getOrCreateAgent(AgentRunRequest request) {
-        String agentKey = "story-" + request.storyId();
+        String keySource = (request.userApiKey() != null && !request.userApiKey().isBlank()) ? "user" : "env";
+        String agentKey = "story-" + request.storyId() + "-" + keySource;
         return agentCache.computeIfAbsent(agentKey, k -> buildAgent(request));
     }
 
     private HarnessAgent buildAgent(AgentRunRequest request) {
+        Model effectiveModel = resolveModel(request.userApiKey());
         return HarnessAgent.builder()
                 .name("artverse-story-" + request.storyId())
                 .sysPrompt("你是一个帮助用户创作小说和漫画的AI助手。")
-                .model(model)
+                .model(effectiveModel)
                 .workspace(workspace)
                 .compaction(compactionConfig)
                 .build();
+    }
+
+    private Model resolveModel(String userApiKey) {
+        if (userApiKey != null && !userApiKey.isBlank()) {
+            log.info("Using user-provided DeepSeek API key for model");
+            return OpenAIChatModel.builder()
+                    .apiKey(userApiKey)
+                    .modelName(properties.getDeepseek().getModel())
+                    .baseUrl(properties.getDeepseek().getBaseUrl())
+                    .stream(true)
+                    .build();
+        }
+        return model;
     }
 
     private RuntimeContext buildRuntimeContext(AgentRunRequest request) {

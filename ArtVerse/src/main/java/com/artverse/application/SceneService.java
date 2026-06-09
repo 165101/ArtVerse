@@ -1,9 +1,8 @@
 package com.artverse.application;
 
-import com.artverse.agents.*;
+import com.artverse.ai.CozeClient;
 import com.artverse.common.BusinessException;
 import com.artverse.domain.Chapter;
-import com.artverse.media.MediaStorageService;
 import com.artverse.persistence.ChapterRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,9 +11,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -27,9 +23,7 @@ import java.util.regex.Pattern;
 public class SceneService {
 
     private final ChapterRepository chapterRepository;
-    private final HarnessAgentGateway harnessAgentGateway;
-    private final CharacterProfileService characterProfileService;
-    private final MediaStorageService mediaStorageService;
+    private final CozeClient cozeClient;
     private final ObjectMapper objectMapper;
 
     private static final Pattern JSON_ARRAY_PATTERN = Pattern.compile("\\[.*\\]", Pattern.DOTALL);
@@ -42,7 +36,7 @@ public class SceneService {
     }
 
     @Transactional
-    public List<String> generateScenes(Long chapterId) {
+    public List<String> generateScenes(Long chapterId, String cozeApiKey) {
         Chapter chapter = chapterRepository.findById(chapterId)
                 .orElseThrow(() -> new BusinessException(404, "Chapter not found"));
 
@@ -51,44 +45,15 @@ public class SceneService {
             throw new BusinessException(400, "No content to generate scenes from");
         }
 
-        Map<String, Object> profileResult = characterProfileService.resolveEffective(chapterId);
-        String profiles = (String) profileResult.get("content");
+        List<String> scenes = cozeClient.generateScenes(material, chapter.getImageCount(), cozeApiKey);
 
-        List<AgentMessage> messages = new ArrayList<>();
-        messages.add(new AgentMessage("system", buildSceneSystemPrompt()));
-        messages.add(new AgentMessage("user", buildSceneUserPrompt(material, profiles, chapter.getImageCount())));
-
-        AgentRunRequest request = new AgentRunRequest(
-                "default",
-                chapter.getStory().getId(),
-                chapterId,
-                AgentTaskType.STORYBOARD,
-                messages,
-                Map.of("pageCount", chapter.getImageCount(), "characterProfiles", profiles)
-        );
-
-        String raw;
-        try {
-            raw = harnessAgentGateway.generateText(request).block();
-        } catch (Exception e) {
-            throw new BusinessException(502, "AI 服务不可用: " + e.getMessage());
-        }
-        if (raw == null || raw.isBlank()) {
-            throw new BusinessException(502, "AI returned empty scene response");
+        if (scenes.size() != chapter.getImageCount()) {
+            throw new BusinessException(502,
+                    "Coze returned " + scenes.size() + " scenes but expected " + chapter.getImageCount());
         }
 
-        List<String> scenes = parseAndValidateScenes(raw, chapter.getImageCount());
         chapter.setScenesText(objectMapper.valueToTree(scenes).toString());
         chapterRepository.save(chapter);
-
-        // Write to file for compatibility
-        try {
-            Path chapterDir = mediaStorageService.getChapterDir(chapterId);
-            Files.createDirectories(chapterDir);
-            Files.writeString(chapterDir.resolve("scenes.txt"), objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(scenes), StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            log.warn("Failed to write scenes.txt: {}", e.getMessage());
-        }
 
         return scenes;
     }
@@ -113,23 +78,6 @@ public class SceneService {
         chapter.setScenesText(objectMapper.valueToTree(scenes).toString());
         chapterRepository.save(chapter);
 
-        // Write to file
-        try {
-            Path chapterDir = mediaStorageService.getChapterDir(chapterId);
-            Files.createDirectories(chapterDir);
-            Files.writeString(chapterDir.resolve("scenes.txt"), objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(scenes), StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            log.warn("Failed to write scenes.txt: {}", e.getMessage());
-        }
-
-        return scenes;
-    }
-
-    public List<String> parseAndValidateScenes(String raw, int expectedCount) {
-        List<String> scenes = parseScenesText(raw);
-        if (scenes.size() != expectedCount) {
-            throw new BusinessException(502, "AI returned " + scenes.size() + " scenes but expected " + expectedCount);
-        }
         return scenes;
     }
 
@@ -138,31 +86,97 @@ public class SceneService {
             return List.of();
         }
 
-        // Try direct JSON parse
-        try {
-            return objectMapper.readValue(text, new TypeReference<List<String>>() {});
-        } catch (Exception ignored) {
-        }
+        // Strategy 1: Direct parse as string array
+        List<String> result = tryParseStringArray(text);
+        if (result != null) return result;
 
-        // Try extracting JSON array from markdown code fence
+        // Strategy 2: Parse as object array [{page, panels}] — AI often returns this format
+        result = tryParseObjectArray(text);
+        if (result != null) return result;
+
+        // Strategy 3: Extract JSON from code fence and retry both formats
         String extracted = extractJsonFromCodeFence(text);
         if (extracted != null) {
-            try {
-                return objectMapper.readValue(extracted, new TypeReference<List<String>>() {});
-            } catch (Exception ignored) {
-            }
+            result = tryParseStringArray(extracted);
+            if (result != null) return result;
+            result = tryParseObjectArray(extracted);
+            if (result != null) return result;
         }
 
-        // Try regex for first JSON array
+        // Strategy 4: Regex find JSON array and retry both formats (with sanitization)
         Matcher matcher = JSON_ARRAY_PATTERN.matcher(text);
         if (matcher.find()) {
-            try {
-                return objectMapper.readValue(matcher.group(), new TypeReference<List<String>>() {});
-            } catch (Exception ignored) {
-            }
+            String candidate = matcher.group();
+            result = tryParseStringArray(candidate);
+            if (result != null) return result;
+            result = tryParseObjectArray(candidate);
+            if (result != null) return result;
+            String cleaned = candidate
+                    .replaceAll(",(\\s*[}\\]])", "$1")     // trailing commas
+                    .replaceAll("(?m)^\\s*//.*$", "");     // comment lines
+            result = tryParseStringArray(cleaned);
+            if (result != null) return result;
+            result = tryParseObjectArray(cleaned);
+            if (result != null) return result;
         }
 
+        // Last resort: split by page markers
+        List<String> byPages = splitByPageMarkers(text);
+        if (!byPages.isEmpty()) return byPages;
+
+        log.error("Failed to parse scenes. Raw text (first 2000 chars): {}",
+                text.length() > 2000 ? text.substring(0, 2000) + "..." : text);
         throw new BusinessException(502, "AI returned invalid scene JSON");
+    }
+
+    private List<String> tryParseStringArray(String text) {
+        try {
+            return objectMapper.readValue(text, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> tryParseObjectArray(String text) {
+        try {
+            List<Map<String, Object>> objects = objectMapper.readValue(
+                    text, new TypeReference<List<Map<String, Object>>>() {});
+            List<String> scenes = new ArrayList<>();
+            for (Map<String, Object> obj : objects) {
+                Object panelsObj = obj.get("panels");
+                if (panelsObj instanceof List<?> panels) {
+                    StringBuilder sb = new StringBuilder();
+                    for (Object p : panels) {
+                        if (p instanceof String s && !s.isBlank()) {
+                            if (!sb.isEmpty()) sb.append("\n");
+                            sb.append(s);
+                        }
+                    }
+                    if (!sb.isEmpty()) {
+                        scenes.add(sb.toString());
+                    }
+                }
+            }
+            return scenes.isEmpty() ? null : scenes;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private List<String> splitByPageMarkers(String text) {
+        String[] parts = text.split("(?=\"第\\d+页)");
+        List<String> result = new ArrayList<>();
+        for (String part : parts) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty() && trimmed.contains("第") && trimmed.contains("页")) {
+                trimmed = trimmed.replaceAll("^[\"'，,\\s]+|[\"'，,\\s]+$", "");
+                if (trimmed.length() > 10) {
+                    result.add(trimmed);
+                }
+            }
+        }
+        return result.size() >= 2 ? result : List.of();
     }
 
     private String extractJsonFromCodeFence(String text) {
@@ -178,29 +192,5 @@ public class SceneService {
         if (codeEnd == -1) return null;
 
         return text.substring(codeStart, codeEnd).trim();
-    }
-
-    private String buildSceneSystemPrompt() {
-        return """
-                你是一位专业的漫画分镜师。请将小说内容拆分成漫画页分镜。
-
-                输出要求：
-                - 严格 JSON 数组格式，每个元素是一页漫画的描述
-                - 每页包含 4-6 个分镜格，最少 4 格
-                - 使用 【第1格】、【第2格】 格式描述每格内容
-                - 包含构图、人物、动作、表情、对话气泡、音效字
-                - 直接输出 JSON 数组，不输出其他内容
-                """;
-    }
-
-    private String buildSceneUserPrompt(String material, String profiles, int pageCount) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("请将以下内容拆分成 ").append(pageCount).append(" 页漫画分镜。\n\n");
-        sb.append("【小说内容】\n").append(material).append("\n\n");
-        if (profiles != null && !profiles.isBlank()) {
-            sb.append("【角色设定】\n").append(profiles).append("\n\n");
-        }
-        sb.append("请输出 ").append(pageCount).append(" 个元素的 JSON 数组。");
-        return sb.toString();
     }
 }

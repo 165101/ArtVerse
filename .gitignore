@@ -1,19 +1,20 @@
-# Environment secrets
+# ========================================
+# Only allow ArtVerse/ and frontend/
+# All other root-level files are excluded
+# ========================================
+/*
+!/ArtVerse
+!/frontend
+!.gitignore
+
 .env
 
-# IDE
 .idea/
 *.iml
 
-# Build output
 target/
 dist/
 node_modules/
 
-# Claude Code
-.claude/
-.playwright-cli/
-
-# OS files
 .DS_Store
 Thumbs.db

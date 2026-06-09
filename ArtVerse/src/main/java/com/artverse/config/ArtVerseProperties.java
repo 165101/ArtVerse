@@ -21,6 +21,7 @@ public class ArtVerseProperties {
     private DeepSeek deepseek = new DeepSeek();
     private Image image = new Image();
     private Minio minio = new Minio();
+    private Coze coze = new Coze();
 
     @Data
     public static class Storage {
@@ -79,5 +80,12 @@ public class ArtVerseProperties {
         private boolean secure = false;
         private String publicBaseUrl = "";
         private int presignedUrlExpireSeconds = 3600;
+    }
+
+    @Data
+    public static class Coze {
+        private String baseUrl = "https://api.coze.cn";
+        private String apiKey = "";
+        private String workflowId = "7645642109203103763";
     }
 }

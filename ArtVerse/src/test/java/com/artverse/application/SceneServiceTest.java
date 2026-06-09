@@ -1,7 +1,6 @@
 package com.artverse.application;
 
-import com.artverse.agents.HarnessAgentGateway;
-import com.artverse.media.MediaStorageService;
+import com.artverse.ai.CozeClient;
 import com.artverse.persistence.ChapterRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -15,9 +14,7 @@ class SceneServiceTest {
     void parsesWrappedScenesArray() {
         SceneService service = new SceneService(
                 mock(ChapterRepository.class),
-                mock(HarnessAgentGateway.class),
-                mock(CharacterProfileService.class),
-                mock(MediaStorageService.class),
+                mock(CozeClient.class),
                 new ObjectMapper()
         );
 

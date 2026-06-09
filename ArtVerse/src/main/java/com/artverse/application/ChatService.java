@@ -62,7 +62,7 @@ public class ChatService {
     }
 
     @Transactional
-    public SseEmitter streamChat(Long chapterId, String userContent) {
+    public SseEmitter streamChat(Long chapterId, String userContent, String userApiKey) {
         Chapter chapter = chapterRepository.findById(chapterId)
                 .orElseThrow(() -> new BusinessException(404, "Chapter not found"));
 
@@ -87,7 +87,8 @@ public class ChatService {
                 chapterId,
                 AgentTaskType.CHAT,
                 contextMessages,
-                Map.of()
+                Map.of(),
+                userApiKey
         );
 
         Disposable subscription = harnessAgentGateway.streamChat(request)

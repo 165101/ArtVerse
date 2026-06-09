@@ -5,7 +5,6 @@ import com.artverse.config.ArtVerseProperties;
 import com.artverse.domain.Chapter;
 import com.artverse.domain.Story;
 import com.artverse.domain.StoryAssetGroup;
-import com.artverse.media.MediaStorageService;
 import com.artverse.persistence.ChapterRepository;
 import com.artverse.persistence.StoryAssetGroupRepository;
 import com.artverse.persistence.StoryRepository;
@@ -13,9 +12,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Map;
 
 @Service
@@ -25,7 +21,6 @@ public class CharacterProfileService {
     private final ChapterRepository chapterRepository;
     private final StoryRepository storyRepository;
     private final StoryAssetGroupRepository assetGroupRepository;
-    private final MediaStorageService mediaStorageService;
     private final ArtVerseProperties properties;
 
     @Transactional(readOnly = true)
@@ -38,19 +33,7 @@ public class CharacterProfileService {
             return Map.of("content", chapter.getCharacterProfiles(), "source", "chapter");
         }
 
-        // 2. Chapter file fallback
-        Path chapterFile = mediaStorageService.getChapterDir(chapterId).resolve("characters.txt");
-        if (Files.exists(chapterFile)) {
-            try {
-                String content = Files.readString(chapterFile, StandardCharsets.UTF_8).trim();
-                if (!content.isBlank()) {
-                    return Map.of("content", content, "source", "chapter");
-                }
-            } catch (Exception ignored) {
-            }
-        }
-
-        // 3. Asset group
+        // 2. Asset group
         if (chapter.getAssetGroup() != null) {
             StoryAssetGroup group = chapter.getAssetGroup();
             if (group.getCharacterProfiles() != null && !group.getCharacterProfiles().isBlank()) {
@@ -77,15 +60,6 @@ public class CharacterProfileService {
                 .orElseThrow(() -> new BusinessException(404, "Chapter not found"));
         chapter.setCharacterProfiles(content);
         chapterRepository.save(chapter);
-
-        // Also write to file for compatibility
-        try {
-            Path chapterDir = mediaStorageService.getChapterDir(chapterId);
-            Files.createDirectories(chapterDir);
-            Files.writeString(chapterDir.resolve("characters.txt"), content != null ? content : "", StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            // File write failure is non-critical
-        }
     }
 
     @Transactional(readOnly = true)

@@ -35,6 +35,9 @@ public class Story {
     @Column(name = "character_profiles", columnDefinition = "TEXT")
     private String characterProfiles;
 
+    @Column(name = "manga_style", length = 32, nullable = false)
+    private String mangaStyle = "japanese";
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 

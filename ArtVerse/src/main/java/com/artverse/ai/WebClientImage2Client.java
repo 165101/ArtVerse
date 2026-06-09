@@ -4,6 +4,7 @@ import com.artverse.common.BusinessException;
 import com.artverse.config.ArtVerseProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.cdimascio.dotenv.Dotenv;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.FileSystemResource;
@@ -11,8 +12,10 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.BodyInserters;
+import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -32,9 +35,8 @@ public class WebClientImage2Client implements Image2Client {
 
     private final ArtVerseProperties properties;
     private final ObjectMapper objectMapper;
+    private final Dotenv dotenv;
 
-    private static final int MAX_RETRIES = 3;
-    private static final Duration RETRY_DELAY = Duration.ofSeconds(5);
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(600);
 
     @Override
@@ -43,13 +45,15 @@ public class WebClientImage2Client implements Image2Client {
         boolean hasReferences = request.referenceImages() != null && !request.referenceImages().isEmpty();
 
         return (hasReferences ? generateWithReferences(request, key) : generateWithoutReferences(request, key))
-                .retryWhen(reactor.util.retry.Retry.backoff(MAX_RETRIES, RETRY_DELAY)
-                        .doBeforeRetry(s -> log.warn("Retrying image generation, attempt {}", s.totalRetries() + 1)));
+                .retry(2);
     }
 
     private Mono<GeneratedImage> generateWithoutReferences(ImageGenerationRequest request, String apiKey) {
         WebClient client = WebClient.builder()
                 .baseUrl(properties.getImage().getBaseUrl())
+                .exchangeStrategies(ExchangeStrategies.builder()
+                        .codecs(c -> c.defaultCodecs().maxInMemorySize(16 * 1024 * 1024))
+                        .build())
                 .build();
 
         String body = buildGenerationsRequest(request);
@@ -61,12 +65,16 @@ public class WebClientImage2Client implements Image2Client {
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(String.class)
+                .timeout(READ_TIMEOUT)
                 .flatMap(response -> parseImageResponse(response, request.prompt()));
     }
 
     private Mono<GeneratedImage> generateWithReferences(ImageGenerationRequest request, String apiKey) {
         WebClient client = WebClient.builder()
                 .baseUrl(properties.getImage().getBaseUrl())
+                .exchangeStrategies(ExchangeStrategies.builder()
+                        .codecs(c -> c.defaultCodecs().maxInMemorySize(16 * 1024 * 1024))
+                        .build())
                 .build();
 
         MultipartBodyBuilder builder = new MultipartBodyBuilder();
@@ -91,43 +99,53 @@ public class WebClientImage2Client implements Image2Client {
                 .body(BodyInserters.fromMultipartData(builder.build()))
                 .retrieve()
                 .bodyToMono(String.class)
+                .timeout(READ_TIMEOUT)
                 .flatMap(response -> parseImageResponse(response, request.prompt()));
     }
 
     private Mono<GeneratedImage> parseImageResponse(String response, String prompt) {
-        try {
-            JsonNode node = objectMapper.readTree(response);
-            JsonNode data = node.path("data").path(0);
+        return Mono.fromCallable(() -> {
+            try {
+                JsonNode node = objectMapper.readTree(response);
+                JsonNode data = node.path("data").path(0);
 
-            byte[] imageBytes;
-            if (data.has("b64_json")) {
-                imageBytes = Base64.getDecoder().decode(data.get("b64_json").asText());
-            } else if (data.has("url")) {
-                WebClient client = WebClient.create();
-                imageBytes = client.get().uri(data.get("url").asText())
-                        .retrieve()
-                        .bodyToMono(byte[].class)
-                        .block();
-            } else {
-                return Mono.error(new BusinessException(502, "Image2 returned no image data"));
+                byte[] imageBytes;
+                if (data.has("b64_json")) {
+                    imageBytes = Base64.getDecoder().decode(data.get("b64_json").asText());
+                } else if (data.has("url")) {
+                    WebClient client = WebClient.builder()
+                            .exchangeStrategies(ExchangeStrategies.builder()
+                                    .codecs(c -> c.defaultCodecs().maxInMemorySize(16 * 1024 * 1024))
+                                    .build())
+                            .build();
+                    imageBytes = client.get().uri(data.get("url").asText())
+                            .retrieve()
+                            .bodyToMono(byte[].class)
+                            .timeout(READ_TIMEOUT)
+                            .block();
+                } else {
+                    throw new BusinessException(502, "Image2 returned no image data");
+                }
+
+                BufferedImage image = ImageIO.read(new ByteArrayInputStream(imageBytes));
+                if (image == null) {
+                    throw new BusinessException(502, "Invalid image format from Image2");
+                }
+
+                Path tempDir = Files.createTempDirectory("artverse_img_");
+                String filename = "panel_" + UUID.randomUUID().toString().substring(0, 8) + ".png";
+                Path tempFile = tempDir.resolve(filename);
+                ImageIO.write(image, "png", tempFile.toFile());
+
+                return new GeneratedImage(tempFile, "image/png", Files.size(tempFile));
+            } catch (BusinessException e) {
+                throw e;
+            } catch (Exception e) {
+                log.error("Image2 response processing failed. Response first 500 chars: {}",
+                        response.length() > 500 ? response.substring(0, 500) : response, e);
+                throw new BusinessException(502, "Failed to process Image2 response: " + e.getMessage());
             }
-
-            BufferedImage image = ImageIO.read(new ByteArrayInputStream(imageBytes));
-            if (image == null) {
-                return Mono.error(new BusinessException(502, "Invalid image format from Image2"));
-            }
-
-            Path tempDir = Files.createTempDirectory("artverse_img_");
-            String filename = "panel_" + UUID.randomUUID().toString().substring(0, 8) + ".png";
-            Path tempFile = tempDir.resolve(filename);
-            ImageIO.write(image, "png", tempFile.toFile());
-
-            return Mono.just(new GeneratedImage(tempFile, "image/png", Files.size(tempFile)));
-        } catch (BusinessException e) {
-            return Mono.error(e);
-        } catch (Exception e) {
-            return Mono.error(new BusinessException(502, "Failed to process Image2 response: " + e.getMessage()));
-        }
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     private String buildGenerationsRequest(ImageGenerationRequest request) {
@@ -148,9 +166,13 @@ public class WebClientImage2Client implements Image2Client {
             return requestApiKey;
         }
         String configKey = properties.getImage().getApiKey();
-        if (configKey == null || configKey.isBlank()) {
-            throw new BusinessException(400, "Image API Key is missing. Please set it in the frontend settings or backend .env.", "Image");
+        if (configKey != null && !configKey.isBlank()) {
+            return configKey;
         }
-        return configKey;
+        String envKey = dotenv.get("IMAGE_API_KEY", "");
+        if (envKey != null && !envKey.isBlank()) {
+            return envKey;
+        }
+        throw new BusinessException(400, "Image API Key is missing. Please set it in the frontend settings or backend .env.", "Image");
     }
 }
