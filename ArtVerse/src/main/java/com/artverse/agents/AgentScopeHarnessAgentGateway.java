@@ -1,8 +1,8 @@
 package com.artverse.agents;
 
 import com.artverse.config.ArtVerseProperties;
-import io.agentscope.core.agent.EventType;
 import io.agentscope.core.agent.RuntimeContext;
+import io.agentscope.core.event.TextBlockDeltaEvent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.model.Model;
@@ -21,7 +21,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @Component
@@ -51,23 +50,10 @@ public class AgentScopeHarnessAgentGateway implements HarnessAgentGateway {
         RuntimeContext ctx = buildRuntimeContext(request);
         List<Msg> messages = convertMessages(prepareInputMessages(request));
 
-        AtomicBoolean hasEmitted = new AtomicBoolean(false);
-
-        return agent.stream(messages, ctx)
-                .filter(e -> e.getType() != EventType.AGENT_RESULT
-                        && e.getMessage() != null
-                        && e.getMessage().getTextContent() != null)
-                .filter(e -> {
-                    if (e.isLast() && hasEmitted.get()) {
-                        return false;
-                    }
-                    String text = e.getMessage().getTextContent();
-                    if (text != null && !text.isEmpty()) {
-                        hasEmitted.set(true);
-                    }
-                    return true;
-                })
-                .map(e -> e.getMessage().getTextContent());
+        return agent.streamEvents(messages, ctx)
+                .ofType(TextBlockDeltaEvent.class)
+                .map(TextBlockDeltaEvent::getDelta)
+                .filter(delta -> delta != null && !delta.isEmpty());
     }
 
     @Override

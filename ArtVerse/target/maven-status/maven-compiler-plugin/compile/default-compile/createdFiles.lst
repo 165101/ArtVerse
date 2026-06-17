@@ -9,6 +9,7 @@ com\artverse\domain\UserApiKey.class
 com\artverse\application\GenerationGuardService$MangaStreamGuard.class
 com\artverse\application\MangaGenerationService.class
 com\artverse\api\dto\ChapterDto$MangaImageDto.class
+com\artverse\domain\ImageGenRecord.class
 com\artverse\domain\CharacterProfile.class
 com\artverse\api\dto\AuthDtos$LoginRequest.class
 com\artverse\api\UserController.class
@@ -40,6 +41,8 @@ com\artverse\agents\AgentRunRequest.class
 com\artverse\application\WorksService.class
 com\artverse\config\ArtVerseProperties$ImportConfig.class
 com\artverse\ai\GeneratedImage.class
+com\artverse\api\SquareController.class
+com\artverse\persistence\ImageGenRecordRepository.class
 com\artverse\storage\ObjectStorageService.class
 com\artverse\api\StoryController.class
 com\artverse\api\AuthController.class
@@ -83,6 +86,7 @@ com\artverse\domain\MessageRole.class
 com\artverse\domain\StoryAssetGroup.class
 com\artverse\persistence\StoryAssetGroupRepository.class
 com\artverse\application\GuardMetricBucketService$MetricDelta.class
+com\artverse\application\SquareService.class
 com\artverse\common\aspect\RateLimitAspect.class
 com\artverse\config\CorsConfig.class
 com\artverse\domain\ContentSource.class
@@ -93,6 +97,7 @@ com\artverse\application\CurrentUserService.class
 com\artverse\application\MangaGenerationService$1.class
 com\artverse\config\ArtVerseProperties$Manga.class
 com\artverse\api\dto\AuthDtos$UserInfo.class
+com\artverse\application\ImageGenService.class
 com\artverse\api\dto\AuthDtos$ApiKeyResponse.class
 com\artverse\domain\Story.class
 com\artverse\application\Hashing.class
@@ -118,6 +123,7 @@ com\artverse\agents\AgentTaskType.class
 com\artverse\ai\Image2Client.class
 com\artverse\api\ChatController.class
 com\artverse\config\ArtVerseProperties$DeepSeek.class
+com\artverse\api\ImageGenController.class
 com\artverse\config\SaTokenConfig.class
 com\artverse\config\ArtVerseProperties$Minio.class
 com\artverse\domain\ChatMessage.class
