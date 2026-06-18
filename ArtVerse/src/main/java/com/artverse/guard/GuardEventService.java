@@ -1,4 +1,4 @@
-package com.artverse.application;
+package com.artverse.guard;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;

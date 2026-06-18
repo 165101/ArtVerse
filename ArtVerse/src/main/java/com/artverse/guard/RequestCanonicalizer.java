@@ -1,4 +1,4 @@
-package com.artverse.application;
+package com.artverse.guard;
 
 import org.springframework.stereotype.Component;
 

@@ -1,4 +1,4 @@
-package com.artverse.application;
+package com.artverse.guard;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
