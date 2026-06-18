@@ -3,6 +3,7 @@ package com.artverse.application;
 import com.artverse.agents.AgentMessage;
 import com.artverse.agents.AgentRunRequest;
 import com.artverse.agents.AgentTaskType;
+import com.artverse.agents.AgentModelSpecFactory;
 import com.artverse.agents.HarnessAgentGateway;
 import com.artverse.common.BusinessException;
 import com.artverse.domain.Chapter;
@@ -29,6 +30,7 @@ public class MangaAgentService {
     private final ChapterRepository chapterRepository;
     private final MangaAgentMessageRepository mangaAgentMessageRepository;
     private final HarnessAgentGateway harnessAgentGateway;
+    private final AgentModelSpecFactory agentModelSpecFactory;
     private final ApiKeyService apiKeyService;
 
     @Transactional(readOnly = true)
@@ -77,6 +79,7 @@ public class MangaAgentService {
                 Map.of(
                         "coze_api_key", nullToBlank(apiKeyService.getDecryptedKey(user, "coze"))
                 ),
+                agentModelSpecFactory.deepSeek(deepseekApiKey),
                 deepseekApiKey
         );
 

@@ -18,6 +18,7 @@ public class ArtVerseProperties {
     private Character character = new Character();
     private Ref ref = new Ref();
     private Manga manga = new Manga();
+    private MangaGeneration mangaGeneration = new MangaGeneration();
     private DeepSeek deepseek = new DeepSeek();
     private Image image = new Image();
     private Minio minio = new Minio();
@@ -56,6 +57,11 @@ public class ArtVerseProperties {
     public static class Manga {
         private int defaultImageCount = 10;
         private List<Integer> allowedImageCounts = List.of(4, 6, 8, 10, 12, 15, 20);
+    }
+
+    @Data
+    public static class MangaGeneration {
+        private int maxConcurrentJobs = 4;
     }
 
     @Data

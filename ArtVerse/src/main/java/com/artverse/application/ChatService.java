@@ -28,6 +28,7 @@ public class ChatService {
     private final ChapterRepository chapterRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final HarnessAgentGateway harnessAgentGateway;
+    private final AgentModelSpecFactory agentModelSpecFactory;
     private final ArtVerseProperties properties;
     private final ObjectMapper objectMapper;
 
@@ -62,7 +63,7 @@ public class ChatService {
     }
 
     @Transactional
-    public SseEmitter streamChat(Long chapterId, String userContent, String userApiKey) {
+    public SseEmitter streamChat(Long chapterId, String userContent, Long userId, String userApiKey) {
         Chapter chapter = chapterRepository.findById(chapterId)
                 .orElseThrow(() -> new BusinessException(404, "Chapter not found"));
 
@@ -82,12 +83,13 @@ public class ChatService {
         StringBuilder accumulated = new StringBuilder();
 
         AgentRunRequest request = new AgentRunRequest(
-                "default",
+                String.valueOf(userId),
                 chapter.getStory().getId(),
                 chapterId,
                 AgentTaskType.CHAT,
                 contextMessages,
                 Map.of(),
+                agentModelSpecFactory.deepSeek(userApiKey),
                 userApiKey
         );
 

@@ -28,6 +28,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -85,11 +87,12 @@ class MangaGenerationServiceTest {
                 chapterRepository,
                 image2Client,
                 imageStorageService,
+                new MangaGenerationConcurrencyGate(properties),
+                directExecutor(),
                 characterProfileService,
                 properties,
                 new ObjectMapper()
         );
-        service.init();
 
         service.generateMangaStream(7L, "image-key", null);
 
@@ -135,15 +138,38 @@ class MangaGenerationServiceTest {
                 chapterRepository,
                 (request, apiKey) -> Mono.error(new IllegalStateException("downstream unavailable")),
                 imageStorageService,
+                new MangaGenerationConcurrencyGate(properties),
+                directExecutor(),
                 characterProfileService,
                 properties,
                 new ObjectMapper()
         );
-        service.init();
 
         assertThatThrownBy(() -> service.generateImageForJob(chapter, List.of(), "image-key", "test prompt"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Image generation timed out or failed");
+    }
+
+    @Test
+    void concurrencyGateRejectsWhenNoPermitIsAvailableAndRecoversAfterRelease() {
+        ArtVerseProperties properties = new ArtVerseProperties();
+        properties.getMangaGeneration().setMaxConcurrentJobs(1);
+        MangaGenerationConcurrencyGate gate = new MangaGenerationConcurrencyGate(properties);
+
+        gate.acquireOrReject();
+
+        assertThatThrownBy(gate::acquireOrReject)
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("当前漫画生成任务较多");
+
+        gate.release();
+        gate.acquireOrReject();
+        gate.release();
+        assertThat(gate.availablePermits()).isEqualTo(1);
+    }
+
+    private static ExecutorService directExecutor() {
+        return Executors.newSingleThreadExecutor();
     }
 
     private static class CapturingImage2Client implements Image2Client {

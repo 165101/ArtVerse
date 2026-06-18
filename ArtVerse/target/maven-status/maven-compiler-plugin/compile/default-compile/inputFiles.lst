@@ -1,4 +1,6 @@
 D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\agents\AgentMessage.java
+D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\agents\AgentModelSpec.java
+D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\agents\AgentModelSpecFactory.java
 D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\agents\AgentRunRequest.java
 D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\agents\AgentScopeHarnessAgentGateway.java
 D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\agents\AgentTaskType.java
@@ -41,6 +43,7 @@ D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\application\
 D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\application\ImageGenService.java
 D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\application\MangaAgentService.java
 D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\application\MangaAgentToolFactory.java
+D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\application\MangaGenerationConcurrencyGate.java
 D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\application\MangaGenerationJob.java
 D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\application\MangaGenerationService.java
 D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\application\MangaImageStorageService.java
@@ -62,6 +65,7 @@ D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\config\BCryp
 D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\config\CorsConfig.java
 D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\config\RedisConfig.java
 D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\config\SaTokenConfig.java
+D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\config\TaskExecutorConfig.java
 D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\domain\Chapter.java
 D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\domain\ChapterStatus.java
 D:\develop\Vibe Coding\ArtVerse\ArtVerse\src\main\java\com\artverse\domain\CharacterProfile.java

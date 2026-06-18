@@ -28,6 +28,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Primary
 public class AgentScopeHarnessAgentGateway implements HarnessAgentGateway {
 
+    static final String PROMPT_VERSION = "v1";
+
     private final Model model;
     private final Path workspace;
     private final CompactionConfig compactionConfig;
@@ -71,14 +73,15 @@ public class AgentScopeHarnessAgentGateway implements HarnessAgentGateway {
     }
 
     private HarnessAgent getOrCreateAgent(AgentRunRequest request) {
-        String keySource = (request.userApiKey() != null && !request.userApiKey().isBlank()) ? "user" : "env";
-        String agentKey = "story-" + request.storyId() + "-chapter-" + request.chapterId()
-                + "-" + request.taskType().name().toLowerCase() + "-" + keySource;
+        String agentKey = buildAgentCacheKey(request, defaultModelSpec(request.userApiKey()));
         return agentCache.computeIfAbsent(agentKey, k -> buildAgent(request));
     }
 
     private HarnessAgent buildAgent(AgentRunRequest request) {
-        Model effectiveModel = resolveModel(request.userApiKey());
+        AgentModelSpec modelSpec = request.modelSpec() != null
+                ? request.modelSpec()
+                : defaultModelSpec(request.userApiKey());
+        Model effectiveModel = resolveModel(request.userApiKey(), modelSpec);
         HarnessAgent agent = HarnessAgent.builder()
                 .name("artverse-story-" + request.storyId())
                 .sysPrompt(systemPromptFor(request.taskType()))
@@ -102,17 +105,53 @@ public class AgentScopeHarnessAgentGateway implements HarnessAgentGateway {
         return "你是一个帮助用户创作小说和漫画内容的 AI 助手。";
     }
 
-    private Model resolveModel(String userApiKey) {
+    private Model resolveModel(String userApiKey, AgentModelSpec modelSpec) {
         if (userApiKey != null && !userApiKey.isBlank()) {
             log.info("Using user-provided DeepSeek API key for model");
             return OpenAIChatModel.builder()
                     .apiKey(userApiKey)
-                    .modelName(properties.getDeepseek().getModel())
-                    .baseUrl(properties.getDeepseek().getBaseUrl())
+                    .modelName(modelSpec.model())
+                    .baseUrl(modelSpec.baseUrl())
                     .stream(true)
                     .build();
         }
         return model;
+    }
+
+    private AgentModelSpec defaultModelSpec(String userApiKey) {
+        if (userApiKey != null && !userApiKey.isBlank()) {
+            return new AgentModelSpec(
+                    "deepseek",
+                    properties.getDeepseek().getBaseUrl(),
+                    properties.getDeepseek().getModel(),
+                    AgentModelSpecFactory.shortHash(userApiKey)
+            );
+        }
+        return new AgentModelSpec(
+                "deepseek",
+                properties.getDeepseek().getBaseUrl(),
+                properties.getDeepseek().getModel(),
+                "env"
+        );
+    }
+
+    static String buildAgentCacheKey(AgentRunRequest request, AgentModelSpec fallbackSpec) {
+        AgentModelSpec spec = request.modelSpec() != null ? request.modelSpec() : fallbackSpec;
+        return String.join(":",
+                "user", nullToKey(request.userId()),
+                "story", String.valueOf(request.storyId()),
+                "chapter", String.valueOf(request.chapterId()),
+                "task", request.taskType().name(),
+                "provider", nullToKey(spec.provider()),
+                "model", nullToKey(spec.model()),
+                "baseUrl", AgentModelSpecFactory.shortHash(spec.baseUrl()),
+                "key", nullToKey(spec.apiKeyHash()),
+                "prompt", PROMPT_VERSION
+        );
+    }
+
+    private static String nullToKey(String value) {
+        return value == null || value.isBlank() ? "none" : value;
     }
 
     private RuntimeContext buildRuntimeContext(AgentRunRequest request) {

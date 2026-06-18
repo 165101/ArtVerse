@@ -10,9 +10,9 @@ import com.artverse.persistence.ChapterRepository;
 import com.artverse.prompt.MangaPromptPolicy;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -23,7 +23,6 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
 @Slf4j
@@ -34,17 +33,14 @@ public class MangaGenerationService {
     private final ChapterRepository chapterRepository;
     private final Image2Client image2Client;
     private final MangaImageStorageService mangaImageStorageService;
+    private final MangaGenerationConcurrencyGate concurrencyGate;
+    @Qualifier("mangaGenerationExecutor")
+    private final ExecutorService executor;
     private final CharacterProfileService characterProfileService;
     private final ArtVerseProperties properties;
     private final ObjectMapper objectMapper;
 
     private final Map<Long, MangaGenerationJob> activeJobs = new ConcurrentHashMap<>();
-    private ExecutorService executor;
-
-    @PostConstruct
-    void init() {
-        executor = Executors.newCachedThreadPool();
-    }
 
     @Transactional
     public SseEmitter generateMangaStream(Long chapterId, String imageApiKey, String deepseekApiKey) {
@@ -77,15 +73,27 @@ public class MangaGenerationService {
         String storyRefImage = chapter.getStory().getRefImage();
         Long assetGroupId = chapter.getAssetGroup() != null ? chapter.getAssetGroup().getId() : null;
 
+        concurrencyGate.acquireOrReject();
         MangaGenerationJob job = new MangaGenerationJob(chapterId, scenes);
         activeJobs.put(chapterId, job);
 
         SseEmitter emitter = new SseEmitter(0L);
         job.addSubscriber(emitter);
 
-        // Start generation in background
-        executor.submit(() -> runGenerationJob(job, chapter, storyId, mangaStyle, storyRefImage, assetGroupId,
-                imageApiKey, deepseekApiKey, onComplete, onError));
+        try {
+            executor.submit(() -> {
+                try {
+                    runGenerationJob(job, chapter, storyId, mangaStyle, storyRefImage, assetGroupId,
+                            imageApiKey, deepseekApiKey, onComplete, onError);
+                } finally {
+                    concurrencyGate.release();
+                }
+            });
+        } catch (RuntimeException e) {
+            activeJobs.remove(chapterId);
+            concurrencyGate.release();
+            throw e;
+        }
 
         return emitter;
     }
