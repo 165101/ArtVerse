@@ -3,6 +3,7 @@ package com.artverse.application;
 import com.artverse.agents.AgentMessage;
 import com.artverse.agents.AgentModelSpecFactory;
 import com.artverse.agents.AgentRunRequest;
+import com.artverse.agents.AgentScopeEventMapper;
 import com.artverse.agents.AgentWorkspaceSyncService;
 import com.artverse.agents.HarnessAgentGateway;
 import com.artverse.common.BusinessException;
@@ -130,6 +131,7 @@ class MangaAgentServiceTest {
         ApiKeyService apiKeyService = mock(ApiKeyService.class);
         ChapterAccessService accessService = mock(ChapterAccessService.class);
         GenerationGuardService guard = mock(GenerationGuardService.class);
+        MangaAgentRunService runService = mock(MangaAgentRunService.class);
         ArtVerseProperties properties = new ArtVerseProperties();
         AgentRunToolStatus toolStatus = new AgentRunToolStatus();
         properties.getAgent().setRunTimeoutSeconds(5);
@@ -163,6 +165,8 @@ class MangaAgentServiceTest {
                 properties,
                 toolStatus,
                 new ObjectMapper(),
+                new AgentScopeEventMapper(),
+                runService,
                 Executors.newSingleThreadExecutor()
         );
         return new Fixture(service, gateway, guard, toolStatus, user, saved);

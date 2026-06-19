@@ -4,6 +4,7 @@ import com.artverse.application.MangaAgentToolFactory;
 import com.artverse.common.BusinessException;
 import com.artverse.config.ArtVerseProperties;
 import io.agentscope.core.agent.RuntimeContext;
+import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.TextBlockDeltaEvent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
@@ -55,14 +56,19 @@ public class AgentScopeHarnessAgentGateway implements HarnessAgentGateway {
 
     @Override
     public Flux<String> streamChat(AgentRunRequest request) {
+        return streamEvents(request)
+                .ofType(TextBlockDeltaEvent.class)
+                .map(TextBlockDeltaEvent::getDelta)
+                .filter(delta -> delta != null && !delta.isEmpty());
+    }
+
+    @Override
+    public Flux<AgentEvent> streamEvents(AgentRunRequest request) {
         HarnessAgent agent = getOrCreateAgent(request);
         RuntimeContext ctx = buildRuntimeContext(request);
         List<Msg> messages = convertMessages(prepareInputMessages(request));
 
-        return agent.streamEvents(messages, ctx)
-                .ofType(TextBlockDeltaEvent.class)
-                .map(TextBlockDeltaEvent::getDelta)
-                .filter(delta -> delta != null && !delta.isEmpty());
+        return agent.streamEvents(messages, ctx);
     }
 
     @Override

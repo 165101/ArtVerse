@@ -1,14 +1,19 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Bot, BookOpenText, Loader2, Send, Sparkles } from 'lucide-react';
 import {
+  type AgentRunTimelineEvent,
+  type AgentUserInputRequest,
+  getMangaAgentRunState,
   getMangaAgentMessages,
+  getOpenMangaAgentRun,
   listChapters,
   listStories,
-  runMangaAgent,
   runMangaAgentStream,
+  resumeMangaAgentRunStream,
   type Chapter,
   type MangaAgentMessage,
   type MangaAgentRunEvent,
+  type MangaAgentRunSnapshot,
   type Story,
 } from '../api';
 
@@ -17,6 +22,13 @@ interface Message {
   content: string;
   requestId?: string;
 }
+
+type AgentStreamResult = {
+  reply: string;
+  requestId?: string;
+  request_id?: string;
+  waiting?: boolean;
+};
 
 const STARTER_PROMPTS = [
   '帮我检查这一话的漫画进度，并告诉我下一步做什么',
@@ -54,11 +66,26 @@ function formatSystemMessage(content: string): string | null {
   return `系统提示：${content}`;
 }
 
+function appendRunEvent(events: AgentRunTimelineEvent[], event: AgentRunTimelineEvent): AgentRunTimelineEvent[] {
+  if (event.type === 'text_delta') {
+    return events;
+  }
+  const last = events[events.length - 1];
+  if (last && last.type === event.type && last.label === event.label && last.status === event.status) {
+    return events;
+  }
+  return [...events, event].slice(-24);
+}
+
 function createRequestId() {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function requestIdOf(value: { requestId?: string; request_id?: string } | null | undefined) {
+  return value?.requestId ?? value?.request_id;
 }
 
 function renderInlineMarkdown(text: string): ReactNode[] {
@@ -201,11 +228,23 @@ export default function MangaAgentPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState('');
   const [runStatus, setRunStatus] = useState('正在思考当前章节...');
+  const [runEvents, setRunEvents] = useState<AgentRunTimelineEvent[]>([]);
+  const [draftReply, setDraftReply] = useState('');
+  const [userInputRequest, setUserInputRequest] = useState<AgentUserInputRequest | null>(null);
+  const [customAnswer, setCustomAnswer] = useState('');
   const chapterIdRef = useRef('');
+  const activeRequestIdRef = useRef<string | null>(null);
+  const runPollTimerRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     chapterIdRef.current = chapterId;
   }, [chapterId]);
+
+  useEffect(() => () => {
+    if (runPollTimerRef.current !== undefined) {
+      window.clearTimeout(runPollTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -265,6 +304,15 @@ export default function MangaAgentPage() {
       setError('');
       setLoading(false);
       setMessages([]);
+      setRunEvents([]);
+      setDraftReply('');
+      setUserInputRequest(null);
+      setCustomAnswer('');
+      activeRequestIdRef.current = null;
+      if (runPollTimerRef.current !== undefined) {
+        window.clearTimeout(runPollTimerRef.current);
+        runPollTimerRef.current = undefined;
+      }
       if (!chapterId) {
         return;
       }
@@ -273,6 +321,9 @@ export default function MangaAgentPage() {
         const list = await getMangaAgentMessages(Number(chapterId));
         if (!active) return;
         setMessages(toMessages(list));
+        const openRun = await getOpenMangaAgentRun(Number(chapterId));
+        if (!active || !openRun) return;
+        restoreRunSnapshot(openRun, chapterId);
       } catch (err: any) {
         if (active) setError(err.message || '加载对话记录失败');
       } finally {
@@ -285,6 +336,136 @@ export default function MangaAgentPage() {
     };
   }, [chapterId]);
 
+  const clearRunPoll = () => {
+    if (runPollTimerRef.current !== undefined) {
+      window.clearTimeout(runPollTimerRef.current);
+      runPollTimerRef.current = undefined;
+    }
+  };
+
+  const reloadMessages = async (id: number, requestChapterId: string) => {
+    const list = await getMangaAgentMessages(id);
+    if (chapterIdRef.current === requestChapterId) {
+      setMessages(toMessages(list));
+    }
+  };
+
+  const applyMangaAgentEvent = (
+    event: MangaAgentRunEvent,
+    fallbackRequestId: string,
+  ): AgentStreamResult | Error | null => {
+    if (event.type === 'status') {
+      setRunStatus(event.data.message || '智能体正在处理当前章节...');
+      return null;
+    }
+    if (event.type === 'run_event') {
+      setRunEvents((prev) => appendRunEvent(prev, event.data));
+      if (event.data.label) setRunStatus(event.data.label);
+      if (event.data.type === 'text_delta' && event.data.text) {
+        setDraftReply((prev) => prev + event.data.text);
+      }
+      return null;
+    }
+    if (event.type === 'tool') {
+      const toolLabel = event.data.tool === 'save_structured_storyboard' || event.data.tool === 'save_storyboard'
+        ? '分镜保存'
+        : event.data.tool === 'generate_storyboard'
+          ? '分镜生成'
+          : '工具调用';
+      if (event.data.succeeded && event.data.saved) {
+        setRunStatus(`${toolLabel}已完成，正在整理回复...`);
+      } else if (!event.data.succeeded) {
+        setRunStatus(`${toolLabel}尝试未通过，智能体正在修正...`);
+      }
+      return null;
+    }
+    if (event.type === 'user_input_requested') {
+      const requestId = requestIdOf(event.data) ?? fallbackRequestId;
+      activeRequestIdRef.current = requestId;
+      setUserInputRequest({ ...event.data, requestId });
+      setRunStatus('等待你的选择');
+      return { reply: '', requestId, waiting: true };
+    }
+    if (event.type === 'done') {
+      const requestId = requestIdOf(event.data) ?? fallbackRequestId;
+      activeRequestIdRef.current = null;
+      clearRunPoll();
+      return {
+        reply: event.data.reply || '',
+        requestId,
+      };
+    }
+    if (event.type === 'error') {
+      activeRequestIdRef.current = null;
+      clearRunPoll();
+      return new Error(event.data.detail || event.data.error || '智能体请求失败');
+    }
+    return null;
+  };
+
+  const restoreRunSnapshot = (snapshot: MangaAgentRunSnapshot, requestChapterId: string) => {
+    const requestId = requestIdOf(snapshot) ?? snapshot.requestId;
+    activeRequestIdRef.current = requestId;
+    setRunEvents([]);
+    setDraftReply('');
+    setUserInputRequest(null);
+
+    for (const persisted of snapshot.events || []) {
+      applyMangaAgentEvent({
+        type: persisted.eventName,
+        data: persisted.data,
+      } as MangaAgentRunEvent, requestId);
+    }
+
+    if (snapshot.status === 'WAITING_USER') {
+      const request = snapshot.userInputRequest;
+      if (request) {
+        setUserInputRequest({ ...request, requestId });
+      }
+      setRunStatus('等待你的选择');
+      setLoading(false);
+      clearRunPoll();
+      return;
+    }
+
+    if (snapshot.status === 'RUNNING') {
+      setLoading(true);
+      if (!snapshot.events || snapshot.events.length === 0) {
+        setRunStatus('智能体仍在处理当前章节...');
+      }
+      scheduleRunPoll(Number(requestChapterId), requestId, requestChapterId);
+      return;
+    }
+
+    activeRequestIdRef.current = null;
+    clearRunPoll();
+    setLoading(false);
+    setUserInputRequest(null);
+    setDraftReply('');
+    if (snapshot.status === 'FAILED') {
+      setError(snapshot.errorMessage || '智能体请求失败');
+    }
+    void reloadMessages(Number(requestChapterId), requestChapterId);
+  };
+
+  const scheduleRunPoll = (id: number, requestId: string, requestChapterId: string) => {
+    clearRunPoll();
+    runPollTimerRef.current = window.setTimeout(async () => {
+      if (chapterIdRef.current !== requestChapterId || activeRequestIdRef.current !== requestId) return;
+      try {
+        const snapshot = await getMangaAgentRunState(id, requestId);
+        if (chapterIdRef.current === requestChapterId) {
+          restoreRunSnapshot(snapshot, requestChapterId);
+        }
+      } catch (err: any) {
+        if (chapterIdRef.current === requestChapterId) {
+          setError(err.message || '同步智能体状态失败');
+          setLoading(false);
+        }
+      }
+    }, 3000);
+  };
+
   const send = async (override?: string) => {
     const requestChapterId = chapterId;
     const id = Number(requestChapterId);
@@ -296,11 +477,16 @@ export default function MangaAgentPage() {
     setError('');
     setRunStatus('智能体已开始处理当前章节...');
     setMessages((prev) => [...prev, { role: 'user', content: text, requestId }]);
+    setRunEvents([]);
+    setDraftReply('');
+    setUserInputRequest(null);
+    setCustomAnswer('');
     setInput('');
+    activeRequestIdRef.current = requestId;
 
     try {
       const result = await runMangaAgentWithStream(id, text, requestId, requestChapterId);
-      if (chapterIdRef.current === requestChapterId) {
+      if (chapterIdRef.current === requestChapterId && !result.waiting && result.reply.trim()) {
         setMessages((prev) => [
           ...prev,
           { role: 'assistant', content: result.reply, requestId: result.requestId ?? result.request_id ?? requestId },
@@ -329,58 +515,102 @@ export default function MangaAgentPage() {
     text: string,
     requestId: string,
     requestChapterId: string,
-  ): Promise<{ reply: string; request_id?: string; requestId?: string }> => {
+  ): Promise<AgentStreamResult> => {
+    return consumeMangaAgentStream(
+      id,
+      requestId,
+      requestChapterId,
+      (onEvent) => runMangaAgentStream(id, text, requestId, onEvent),
+    );
+  };
+
+  const resumeMangaAgentWithStream = (
+    id: number,
+    requestId: string,
+    answer: string,
+    requestChapterId: string,
+  ): Promise<AgentStreamResult> => {
+    return consumeMangaAgentStream(
+      id,
+      requestId,
+      requestChapterId,
+      (onEvent) => resumeMangaAgentRunStream(id, requestId, answer, onEvent),
+    );
+  };
+
+  const consumeMangaAgentStream = (
+    id: number,
+    requestId: string,
+    requestChapterId: string,
+    startStream: (onEvent: (event: MangaAgentRunEvent) => void) => AbortController,
+  ): Promise<AgentStreamResult> => {
     return new Promise((resolve, reject) => {
       let settled = false;
-      const controller = runMangaAgentStream(id, text, requestId, (event: MangaAgentRunEvent) => {
+      let controller: AbortController | null = null;
+      controller = startStream((event: MangaAgentRunEvent) => {
         if (chapterIdRef.current !== requestChapterId || settled) return;
-        if (event.type === 'status') {
-          setRunStatus(event.data.message || '智能体正在处理当前章节...');
-          return;
-        }
-        if (event.type === 'tool') {
-          const toolLabel = event.data.tool === 'save_structured_storyboard' || event.data.tool === 'save_storyboard'
-            ? '分镜保存'
-            : event.data.tool === 'generate_storyboard'
-              ? '分镜生成'
-              : '工具调用';
-          if (event.data.succeeded && event.data.saved) {
-            setRunStatus(`${toolLabel}已完成，正在整理回复...`);
-          } else if (!event.data.succeeded) {
-            setRunStatus(`${toolLabel}尝试未通过，智能体正在修正...`);
-          }
-          return;
-        }
-        if (event.type === 'done') {
-          settled = true;
-          controller.abort();
-          resolve({
-            reply: event.data.reply || '',
-            requestId: event.data.requestId,
-            request_id: event.data.request_id,
-          });
-          return;
-        }
-        if (event.type === 'error') {
-          settled = true;
-          controller.abort();
-          reject(new Error(event.data.detail || event.data.error || '智能体请求失败'));
+        const outcome = applyMangaAgentEvent(event, requestId);
+        if (!outcome) return;
+        settled = true;
+        controller?.abort();
+        if (outcome instanceof Error) {
+          reject(outcome);
+        } else {
+          resolve(outcome);
         }
       });
 
       window.setTimeout(async () => {
         if (settled) return;
-        settled = true;
-        controller.abort();
-        setRunStatus('连接等待较久，正在尝试读取已完成的结果...');
+        controller?.abort();
+        setRunStatus('连接等待较久，正在同步后台运行状态...');
         try {
-          const result = await runMangaAgent(id, text, requestId);
-          resolve(result);
+          const snapshot = await getMangaAgentRunState(id, requestId);
+          restoreRunSnapshot(snapshot, requestChapterId);
+          if (snapshot.status === 'WAITING_USER') {
+            settled = true;
+            resolve({ reply: '', requestId, waiting: true });
+          } else if (snapshot.status === 'SUCCEEDED' || snapshot.status === 'DEGRADED') {
+            settled = true;
+            resolve({ reply: snapshot.finalReply || '', requestId });
+          } else if (snapshot.status === 'FAILED') {
+            settled = true;
+            reject(new Error(snapshot.errorMessage || '智能体请求失败'));
+          }
         } catch (err) {
+          settled = true;
           reject(err);
         }
       }, 240000);
     });
+  };
+
+  const resumeWithAnswer = async (answer: string) => {
+    const currentRequest = userInputRequest;
+    const id = Number(chapterId);
+    const requestId = currentRequest?.requestId ?? currentRequest?.request_id;
+    if (!id || !requestId || loading) return;
+    setLoading(true);
+    setError('');
+    setRunStatus('已收到你的选择，智能体正在继续...');
+    setUserInputRequest(null);
+    setCustomAnswer('');
+    activeRequestIdRef.current = requestId;
+    try {
+      const result = await resumeMangaAgentWithStream(id, requestId, answer, chapterId);
+      if (!result.waiting && result.reply.trim()) {
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: result.reply, requestId: result.requestId ?? result.request_id ?? requestId },
+        ]);
+      }
+      setDraftReply('');
+      setRunEvents([]);
+    } catch (err: any) {
+      setError(err.message || '继续任务失败');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const activeStory = stories.find((story) => String(story.id) === storyId) ?? null;
@@ -520,9 +750,68 @@ export default function MangaAgentPage() {
                 ))}
                 {loading && (
                   <div className="flex justify-start">
-                    <div className="inline-flex items-center gap-2 rounded-3xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-gray-400">
-                      <Loader2 size={15} className="animate-spin" />
-                      {runStatus}
+                    <div className="max-w-[85%] rounded-3xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-gray-300">
+                      <div className="mb-3 inline-flex items-center gap-2 text-gray-400">
+                        <Loader2 size={15} className="animate-spin" />
+                        {runStatus}
+                      </div>
+                      {runEvents.length > 0 && (
+                        <div className="space-y-2 border-l border-white/10 pl-3">
+                          {runEvents.slice(-8).map((event, eventIdx) => (
+                            <div key={`${event.type}-${event.createdAt || eventIdx}`} className="text-xs leading-5 text-gray-400">
+                              <span className={event.status === 'success' || event.status === 'succeeded' ? 'text-emerald-300' : 'text-amber-200'}>
+                                {event.label || event.type}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {draftReply && (
+                        <div className="mt-3 border-t border-white/10 pt-3 text-sm leading-7 text-gray-200">
+                          <MarkdownMessage content={draftReply} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {userInputRequest && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[85%] rounded-3xl border border-amber-300/20 bg-amber-300/[0.06] px-4 py-4 text-sm text-gray-100">
+                      <div className="text-xs uppercase tracking-[0.18em] text-amber-200/70">需要你的决定</div>
+                      <div className="mt-2 text-base font-medium text-white">{userInputRequest.question}</div>
+                      {userInputRequest.reason && <div className="mt-1 text-xs text-gray-400">{userInputRequest.reason}</div>}
+                      <div className="mt-4 space-y-2">
+                        {userInputRequest.options.map((option) => (
+                          <button
+                            key={option.id}
+                            onClick={() => void resumeWithAnswer(option.label)}
+                            className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-left transition hover:border-amber-300/40 hover:bg-white/[0.06]"
+                          >
+                            <div className="flex items-center gap-2 text-sm font-medium text-white">
+                              <span>{option.label}</span>
+                              {option.recommended && <span className="rounded-full bg-amber-300/15 px-2 py-0.5 text-[11px] text-amber-100">推荐</span>}
+                            </div>
+                            {option.description && <div className="mt-1 text-xs leading-5 text-gray-400">{option.description}</div>}
+                          </button>
+                        ))}
+                      </div>
+                      {userInputRequest.allowFreeText && (
+                        <div className="mt-3 flex gap-2">
+                          <input
+                            value={customAnswer}
+                            onChange={(e) => setCustomAnswer(e.target.value)}
+                            placeholder="输入其他选择"
+                            className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-gray-100 outline-none focus:border-amber-300/40"
+                          />
+                          <button
+                            onClick={() => void resumeWithAnswer(customAnswer)}
+                            disabled={!customAnswer.trim()}
+                            className="rounded-2xl bg-amber-300 px-4 py-2 text-sm font-medium text-gray-950 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            继续
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

@@ -22,6 +22,7 @@ public class AgentRunToolStatus {
     );
 
     private final ConcurrentMap<ScopeKey, CopyOnWriteArrayList<RunState>> activeRuns = new ConcurrentHashMap<>();
+    private final ConcurrentMap<RunKey, AgentUserInputRequest> waitingInputs = new ConcurrentHashMap<>();
 
     public RunScope start(Long userId, Long chapterId, UUID requestId) {
         return start(userId, chapterId, requestId, null);
@@ -42,6 +43,35 @@ public class AgentRunToolStatus {
 
     public void recordFailed(String toolName, Long userId, Long chapterId, long durationMs, String error) {
         record(new ToolEvent(toolName, false, durationMs, error, Map.of()), userId, chapterId);
+    }
+
+    public void requestUserInput(Long userId, Long chapterId, UUID requestId, AgentUserInputRequest request) {
+        waitingInputs.put(new RunKey(userId, chapterId, requestId), request);
+        CopyOnWriteArrayList<RunState> states = activeRuns.get(new ScopeKey(userId, chapterId));
+        if (states != null) {
+            states.stream()
+                    .filter(state -> requestId.equals(state.requestId()))
+                    .findFirst()
+                    .ifPresent(state -> state.setUserInputRequest(request));
+        }
+    }
+
+    public UUID requestUserInputForActiveRun(Long userId, Long chapterId, AgentUserInputRequest request) {
+        CopyOnWriteArrayList<RunState> states = activeRuns.get(new ScopeKey(userId, chapterId));
+        if (states == null || states.isEmpty()) {
+            return null;
+        }
+        RunState state = states.get(states.size() - 1);
+        requestUserInput(userId, chapterId, state.requestId(), request);
+        return state.requestId();
+    }
+
+    public AgentUserInputRequest waitingInput(Long userId, Long chapterId, UUID requestId) {
+        return waitingInputs.get(new RunKey(userId, chapterId, requestId));
+    }
+
+    public void clearWaitingInput(Long userId, Long chapterId, UUID requestId) {
+        waitingInputs.remove(new RunKey(userId, chapterId, requestId));
     }
 
     private void record(ToolEvent event, Long userId, Long chapterId) {
@@ -89,6 +119,7 @@ public class AgentRunToolStatus {
         private final UUID requestId;
         private final Consumer<ToolEvent> listener;
         private final CopyOnWriteArrayList<ToolEvent> events = new CopyOnWriteArrayList<>();
+        private volatile AgentUserInputRequest userInputRequest;
 
         private RunState(Long userId, Long chapterId, UUID requestId, Consumer<ToolEvent> listener) {
             this.userId = userId;
@@ -134,6 +165,14 @@ public class AgentRunToolStatus {
             List<ToolEvent> successful = successfulMutatingEvents();
             return successful.isEmpty() ? null : successful.get(successful.size() - 1);
         }
+
+        private void setUserInputRequest(AgentUserInputRequest userInputRequest) {
+            this.userInputRequest = userInputRequest;
+        }
+
+        public AgentUserInputRequest userInputRequest() {
+            return userInputRequest;
+        }
     }
 
     public record ToolEvent(String toolName,
@@ -144,5 +183,8 @@ public class AgentRunToolStatus {
     }
 
     private record ScopeKey(Long userId, Long chapterId) {
+    }
+
+    private record RunKey(Long userId, Long chapterId, UUID requestId) {
     }
 }

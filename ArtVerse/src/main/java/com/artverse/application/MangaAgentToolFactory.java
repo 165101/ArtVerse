@@ -24,6 +24,7 @@ public class MangaAgentToolFactory {
     private final ChapterAccessService chapterAccessService;
     private final GenerationGuardService generationGuardService;
     private final AgentToolAuditService agentToolAuditService;
+    private final AgentRunToolStatus agentRunToolStatus;
 
     public Object create(String cozeApiKey, Long chapterId, Long userId) {
         return new Tools(cozeApiKey, chapterId, userId);
@@ -138,6 +139,71 @@ public class MangaAgentToolFactory {
                 );
             });
         }
+
+        @Tool(
+                name = "ask_user",
+                description = "Pause the manga agent and ask the user to choose between options before continuing. Use this when a creative or workflow decision cannot be made safely.",
+                readOnly = true
+        )
+        public Map<String, Object> askUser(
+                @ToolParam(name = "question", description = "Question to show to the user") String question,
+                @ToolParam(name = "options", description = "Options as a list of strings or objects with label/description/recommended") Object options,
+                @ToolParam(name = "allow_free_text", description = "Whether the user may type a custom answer") Boolean allowFreeText,
+                @ToolParam(name = "reason", description = "Short reason why user input is needed") String reason) {
+            return agentToolAuditService.around("ask_user", userId, chapterId, () -> {
+                AgentUserInputRequest request = buildUserInputRequest(question, options, allowFreeText, reason);
+                agentRunToolStatus.requestUserInputForActiveRun(userId, chapterId, request);
+                throw new AgentUserInputRequiredException(request);
+            });
+        }
+    }
+
+    private AgentUserInputRequest buildUserInputRequest(String question, Object rawOptions,
+                                                        Boolean allowFreeText, String reason) {
+        List<AgentUserInputRequest.Option> options = normalizeOptions(rawOptions);
+        if (options.isEmpty()) {
+            options = List.of(
+                    new AgentUserInputRequest.Option("a", "继续默认方案", "让智能体按当前上下文选择一个稳妥方案", true),
+                    new AgentUserInputRequest.Option("b", "先给出建议", "先不要执行，让智能体说明推荐路径", false)
+            );
+        }
+        return new AgentUserInputRequest(
+                question == null || question.isBlank() ? "需要你确认下一步怎么处理。" : question.trim(),
+                options,
+                Boolean.TRUE.equals(allowFreeText),
+                reason == null ? "" : reason.trim()
+        );
+    }
+
+    private List<AgentUserInputRequest.Option> normalizeOptions(Object rawOptions) {
+        if (!(rawOptions instanceof List<?> list)) {
+            return List.of();
+        }
+        List<AgentUserInputRequest.Option> result = new java.util.ArrayList<>();
+        for (int i = 0; i < list.size(); i++) {
+            Object item = list.get(i);
+            String id = String.valueOf((char) ('a' + Math.min(i, 25)));
+            if (item instanceof Map<?, ?> map) {
+                String label = optionalText(map.get("label"));
+                if (label.isBlank()) {
+                    label = optionalText(map.get("title"));
+                }
+                if (!label.isBlank()) {
+                    result.add(new AgentUserInputRequest.Option(
+                            optionalText(map.get("id")).isBlank() ? id : optionalText(map.get("id")),
+                            label,
+                            optionalText(map.get("description")),
+                            Boolean.TRUE.equals(map.get("recommended"))
+                    ));
+                }
+            } else {
+                String label = optionalText(item);
+                if (!label.isBlank()) {
+                    result.add(new AgentUserInputRequest.Option(id, label, "", i == 0));
+                }
+            }
+        }
+        return result;
     }
 
     private String chapterDisplayName(Chapter chapter) {
@@ -151,5 +217,9 @@ public class MangaAgentToolFactory {
         if (text == null || text.isBlank()) return "";
         String normalized = text.replaceAll("\\s+", " ").trim();
         return normalized.length() <= maxChars ? normalized : normalized.substring(0, maxChars) + "...";
+    }
+
+    private String optionalText(Object value) {
+        return value == null ? "" : String.valueOf(value).replaceAll("\\s+", " ").trim();
     }
 }

@@ -23,6 +23,11 @@ public class AgentToolAuditService {
             log.info("Agent tool succeeded: {}", event(toolName, userId, chapterId, "succeeded",
                     durationMs, null));
             return result;
+        } catch (AgentUserInputRequiredException e) {
+            long durationMs = System.currentTimeMillis() - startedAt;
+            log.info("Agent tool waiting for user input: {}", event(toolName, userId, chapterId, "waiting_user",
+                    durationMs, null));
+            throw e;
         } catch (RuntimeException e) {
             long durationMs = System.currentTimeMillis() - startedAt;
             agentRunToolStatus.recordFailed(toolName, userId, chapterId, durationMs, e.getMessage());

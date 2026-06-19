@@ -1141,9 +1141,60 @@ export interface MangaAgentMessage {
 
 export type MangaAgentRunEvent =
   | { type: 'status'; data: { message?: string; requestId?: string; request_id?: string } }
+  | { type: 'run_event'; data: AgentRunTimelineEvent }
   | { type: 'tool'; data: { tool?: string; succeeded?: boolean; saved?: boolean; scenes_count?: number; error?: string } }
+  | { type: 'user_input_requested'; data: AgentUserInputRequest }
   | { type: 'done'; data: { reply?: string; requestId?: string; request_id?: string } }
   | { type: 'error'; data: { detail?: string; error?: string; requestId?: string; request_id?: string } };
+
+export interface AgentRunTimelineEvent {
+  type: string;
+  phase?: string;
+  label?: string;
+  toolName?: string;
+  status?: string;
+  text?: string;
+  data?: Record<string, unknown>;
+  createdAt?: string;
+}
+
+export type MangaAgentRunStatus = 'RUNNING' | 'WAITING_USER' | 'SUCCEEDED' | 'DEGRADED' | 'FAILED';
+
+export interface AgentRunPersistedEvent {
+  eventName: MangaAgentRunEvent['type'];
+  data: MangaAgentRunEvent['data'];
+  createdAt?: string;
+}
+
+export interface MangaAgentRunSnapshot {
+  requestId: string;
+  request_id?: string;
+  status: MangaAgentRunStatus;
+  inputMessage?: string;
+  finalReply?: string;
+  errorMessage?: string;
+  userInputRequest?: AgentUserInputRequest | null;
+  events: AgentRunPersistedEvent[];
+  createdAt?: string;
+  updatedAt?: string;
+  completedAt?: string | null;
+}
+
+export interface AgentUserInputOption {
+  id: string;
+  label: string;
+  description?: string;
+  recommended?: boolean;
+}
+
+export interface AgentUserInputRequest {
+  requestId?: string;
+  request_id?: string;
+  question: string;
+  options: AgentUserInputOption[];
+  allowFreeText?: boolean;
+  reason?: string;
+}
 
 export async function getMangaAgentMessages(chapterId: number): Promise<MangaAgentMessage[]> {
   const res = await authFetch(`${BASE}/api/chapters/${chapterId}/manga-agent/messages`);
@@ -1168,12 +1219,26 @@ export function runMangaAgentStream(
   requestId: string | undefined,
   onEvent: (event: MangaAgentRunEvent) => void,
 ): AbortController {
+  return startMangaAgentEventStream(
+    `${BASE}/api/chapters/${chapterId}/manga-agent/run-stream`,
+    { message, requestId },
+    requestId,
+    onEvent,
+  );
+}
+
+function startMangaAgentEventStream(
+  url: string,
+  body: Record<string, unknown>,
+  requestId: string | undefined,
+  onEvent: (event: MangaAgentRunEvent) => void,
+): AbortController {
   const controller = new AbortController();
 
-  authFetch(`${BASE}/api/chapters/${chapterId}/manga-agent/run-stream`, {
+  authFetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, requestId }),
+    body: JSON.stringify(body),
     signal: controller.signal,
   })
     .then(async (res) => {
@@ -1201,7 +1266,12 @@ export function runMangaAgentStream(
         const dataStr = trimmed.slice(5).trim();
         try {
           const data = JSON.parse(dataStr);
-          if (currentEvent === 'status' || currentEvent === 'tool' || currentEvent === 'done' || currentEvent === 'error') {
+          if (currentEvent === 'status'
+            || currentEvent === 'run_event'
+            || currentEvent === 'tool'
+            || currentEvent === 'user_input_requested'
+            || currentEvent === 'done'
+            || currentEvent === 'error') {
             onEvent({ type: currentEvent, data } as MangaAgentRunEvent);
           }
         } catch {
@@ -1230,4 +1300,45 @@ export function runMangaAgentStream(
     });
 
   return controller;
+}
+
+export async function getOpenMangaAgentRun(chapterId: number): Promise<MangaAgentRunSnapshot | null> {
+  const res = await authFetch(`${BASE}/api/chapters/${chapterId}/manga-agent/runs/open`);
+  if (!res.ok) throw new Error(parseApiError(await res.text()));
+  const data = await res.json();
+  return data.run || null;
+}
+
+export async function getMangaAgentRunState(chapterId: number, requestId: string): Promise<MangaAgentRunSnapshot> {
+  const res = await authFetch(`${BASE}/api/chapters/${chapterId}/manga-agent/runs/${requestId}`);
+  if (!res.ok) throw new Error(parseApiError(await res.text()));
+  return res.json();
+}
+
+export async function resumeMangaAgentRun(
+  chapterId: number,
+  requestId: string,
+  answer: string,
+): Promise<{ reply: string; request_id?: string; requestId?: string }> {
+  const res = await authFetch(`${BASE}/api/chapters/${chapterId}/manga-agent/runs/${requestId}/resume`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answer }),
+  });
+  if (!res.ok) throw new Error(parseApiError(await res.text()));
+  return res.json();
+}
+
+export function resumeMangaAgentRunStream(
+  chapterId: number,
+  requestId: string,
+  answer: string,
+  onEvent: (event: MangaAgentRunEvent) => void,
+): AbortController {
+  return startMangaAgentEventStream(
+    `${BASE}/api/chapters/${chapterId}/manga-agent/runs/${requestId}/resume-stream`,
+    { answer },
+    requestId,
+    onEvent,
+  );
 }

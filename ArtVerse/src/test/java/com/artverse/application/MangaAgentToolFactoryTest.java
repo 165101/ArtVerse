@@ -145,6 +145,45 @@ class MangaAgentToolFactoryTest {
         verify(sceneService).updateScenes(7L, scenes);
     }
 
+    @Test
+    void askUserStoresWaitingInputAndSuspendsRun() {
+        ChapterRepository chapterRepository = mock(ChapterRepository.class);
+        MangaImageRepository mangaImageRepository = mock(MangaImageRepository.class);
+        SceneService sceneService = mock(SceneService.class);
+        StructuredStoryboardService structuredStoryboardService = mock(StructuredStoryboardService.class);
+        GenerationGuardService generationGuardService = mock(GenerationGuardService.class);
+        AgentRunToolStatus runStatus = new AgentRunToolStatus();
+        AgentToolAuditService auditService = new AgentToolAuditService(runStatus);
+        java.util.UUID requestId = java.util.UUID.randomUUID();
+
+        try (AgentRunToolStatus.RunScope ignored = runStatus.start(1L, 7L, requestId)) {
+            MangaAgentToolFactory.Tools tools = tools(
+                    chapterRepository,
+                    mangaImageRepository,
+                    sceneService,
+                    structuredStoryboardService,
+                    generationGuardService,
+                    auditService,
+                    runStatus,
+                    1L
+            );
+
+            assertThatThrownBy(() -> tools.askUser(
+                    "选择数据库？",
+                    List.of(Map.of("label", "PostgreSQL", "recommended", true), Map.of("label", "MySQL")),
+                    true,
+                    "需要持久化方案"
+            )).isInstanceOf(AgentUserInputRequiredException.class);
+        }
+
+        AgentUserInputRequest waiting = runStatus.waitingInput(1L, 7L, requestId);
+        assertThat(waiting).isNotNull();
+        assertThat(waiting.question()).isEqualTo("选择数据库？");
+        assertThat(waiting.options()).extracting(AgentUserInputRequest.Option::label)
+                .containsExactly("PostgreSQL", "MySQL");
+        assertThat(waiting.allowFreeText()).isTrue();
+    }
+
     private MangaAgentToolFactory.Tools tools(ChapterRepository chapterRepository,
                                              MangaImageRepository mangaImageRepository,
                                              SceneService sceneService,
@@ -152,13 +191,26 @@ class MangaAgentToolFactoryTest {
                                              GenerationGuardService generationGuardService,
                                              AgentToolAuditService auditService,
                                              Long userId) {
+        return tools(chapterRepository, mangaImageRepository, sceneService, structuredStoryboardService,
+                generationGuardService, auditService, new AgentRunToolStatus(), userId);
+    }
+
+    private MangaAgentToolFactory.Tools tools(ChapterRepository chapterRepository,
+                                             MangaImageRepository mangaImageRepository,
+                                             SceneService sceneService,
+                                             StructuredStoryboardService structuredStoryboardService,
+                                             GenerationGuardService generationGuardService,
+                                             AgentToolAuditService auditService,
+                                             AgentRunToolStatus runStatus,
+                                             Long userId) {
         MangaAgentToolFactory factory = new MangaAgentToolFactory(
                 mangaImageRepository,
                 sceneService,
                 structuredStoryboardService,
                 new ChapterAccessService(chapterRepository),
                 generationGuardService,
-                auditService
+                auditService,
+                runStatus
         );
         return (MangaAgentToolFactory.Tools) factory.create("coze-key", 7L, userId);
     }
