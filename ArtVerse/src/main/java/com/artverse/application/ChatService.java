@@ -6,7 +6,6 @@ import com.artverse.config.ArtVerseProperties;
 import com.artverse.domain.*;
 import com.artverse.persistence.ChapterRepository;
 import com.artverse.persistence.ChatMessageRepository;
-import com.artverse.sse.SseEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
