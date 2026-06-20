@@ -13,5 +13,6 @@ public interface MangaAgentMessageRepository extends JpaRepository<MangaAgentMes
 
     List<MangaAgentMessage> findByUserIdAndChapterIdOrderByCreatedAtAsc(Long userId, Long chapterId);
 
-    Optional<MangaAgentMessage> findByUserIdAndRequestIdAndRole(Long userId, UUID requestId, com.artverse.domain.MessageRole role);
+    Optional<MangaAgentMessage> findByUserIdAndChapterIdAndRequestIdAndRole(Long userId, Long chapterId, UUID requestId,
+                                                                            com.artverse.domain.MessageRole role);
 }

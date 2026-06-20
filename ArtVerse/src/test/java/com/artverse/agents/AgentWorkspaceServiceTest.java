@@ -47,7 +47,8 @@ class AgentWorkspaceServiceTest {
         assertThat(path).contains("users");
         assertThat(path).contains("stories");
         assertThat(path).doesNotContain("sk-secret");
-        assertThat(workspace.toAbsolutePath().normalize()).startsWith(tempDir.toAbsolutePath().normalize());
+        assertThat(workspace.toAbsolutePath().normalize().toString())
+                .startsWith(tempDir.toAbsolutePath().normalize().toString());
     }
 
     @Test

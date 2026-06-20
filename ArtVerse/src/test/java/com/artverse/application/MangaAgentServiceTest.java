@@ -1,6 +1,5 @@
 package com.artverse.application;
 
-import com.artverse.agents.AgentMessage;
 import com.artverse.agents.AgentModelSpecFactory;
 import com.artverse.agents.AgentRunRequest;
 import com.artverse.agents.AgentScopeEventMapper;
@@ -16,7 +15,6 @@ import com.artverse.domain.Story;
 import com.artverse.domain.User;
 import com.artverse.guard.GenerationGuardService;
 import com.artverse.persistence.MangaAgentMessageRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.cdimascio.dotenv.Dotenv;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
@@ -43,17 +41,17 @@ class MangaAgentServiceTest {
     void runUsesGenerationGuardAndSavesAssistantReply() {
         Fixture fixture = fixture();
         UUID requestId = UUID.randomUUID();
-        when(fixture.gateway.generateText(any(AgentRunRequest.class))).thenReturn(Mono.just("完成"));
-        when(fixture.guard.executeMangaAgentRun(eq(1L), eq(7L), eq(requestId.toString()), eq("继续"),
+        when(fixture.gateway.generateText(any(AgentRunRequest.class))).thenReturn(Mono.just("\u5b8c\u6210"));
+        when(fixture.guard.executeMangaAgentRun(eq(1L), eq(7L), eq(requestId.toString()), eq("continue"),
                 eq("deepseek"), eq("deepseek-chat"), any(), any()))
                 .thenAnswer(invocation -> invocation.<Callable<Map<String, Object>>>getArgument(7).call());
 
-        MangaAgentService.RunResult result = fixture.service.run(7L, "继续", requestId, fixture.user);
+        MangaAgentService.RunResult result = fixture.service.run(7L, "continue", requestId, fixture.user);
 
-        assertThat(result.reply()).isEqualTo("完成");
+        assertThat(result.reply()).isEqualTo("\u5b8c\u6210");
         assertThat(fixture.saved).extracting(MangaAgentMessage::getRole)
                 .containsExactly(MessageRole.USER, MessageRole.ASSISTANT);
-        verify(fixture.guard).executeMangaAgentRun(eq(1L), eq(7L), eq(requestId.toString()), eq("继续"),
+        verify(fixture.guard).executeMangaAgentRun(eq(1L), eq(7L), eq(requestId.toString()), eq("continue"),
                 eq("deepseek"), eq("deepseek-chat"), any(), any());
     }
 
@@ -63,11 +61,11 @@ class MangaAgentServiceTest {
         UUID requestId = UUID.randomUUID();
         when(fixture.gateway.generateText(any(AgentRunRequest.class)))
                 .thenReturn(Mono.error(new IllegalStateException("model down")));
-        when(fixture.guard.executeMangaAgentRun(eq(1L), eq(7L), eq(requestId.toString()), eq("继续"),
+        when(fixture.guard.executeMangaAgentRun(eq(1L), eq(7L), eq(requestId.toString()), eq("continue"),
                 eq("deepseek"), eq("deepseek-chat"), any(), any()))
                 .thenAnswer(invocation -> invocation.<Callable<Map<String, Object>>>getArgument(7).call());
 
-        assertThatThrownBy(() -> fixture.service.run(7L, "继续", requestId, fixture.user))
+        assertThatThrownBy(() -> fixture.service.run(7L, "continue", requestId, fixture.user))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Agent service failed");
 
@@ -85,43 +83,23 @@ class MangaAgentServiceTest {
                     "save_structured_storyboard",
                     1L,
                     7L,
+                    requestId,
                     12L,
                     Map.of("saved", true, "scenes_count", 1)
             );
             return Mono.error(new IllegalStateException("final response timed out"));
         });
-        when(fixture.guard.executeMangaAgentRun(eq(1L), eq(7L), eq(requestId.toString()), eq("重写分镜"),
+        when(fixture.guard.executeMangaAgentRun(eq(1L), eq(7L), eq(requestId.toString()), eq("rewrite storyboard"),
                 eq("deepseek"), eq("deepseek-chat"), any(), any()))
                 .thenAnswer(invocation -> invocation.<Callable<Map<String, Object>>>getArgument(7).call());
 
-        MangaAgentService.RunResult result = fixture.service.run(7L, "重写分镜", requestId, fixture.user);
+        MangaAgentService.RunResult result = fixture.service.run(7L, "rewrite storyboard", requestId, fixture.user);
 
-        assertThat(result.reply()).contains("分镜已重写并保存", "最终总结回复没有及时完成");
+        assertThat(result.reply()).contains("\u5206\u955c\u5df2\u7ecf\u91cd\u5199\u5e76\u4fdd\u5b58", "\u6700\u7ec8\u603b\u7ed3\u56de\u590d\u6ca1\u6709\u53ca\u65f6\u5b8c\u6210");
         assertThat(fixture.saved).extracting(MangaAgentMessage::getRole)
                 .containsExactly(MessageRole.USER, MessageRole.ASSISTANT, MessageRole.SYSTEM);
-        assertThat(fixture.saved.get(1).getContent()).contains("分镜已重写并保存");
+        assertThat(fixture.saved.get(1).getContent()).contains("\u5206\u955c\u5df2\u7ecf\u91cd\u5199\u5e76\u4fdd\u5b58");
         assertThat(fixture.saved.get(2).getContent()).contains("agent_run_degraded_after_tool_success");
-    }
-
-    @Test
-    void buildMessagesExcludesCurrentRequestHistory() {
-        User user = user(1L);
-        Chapter chapter = chapter(user);
-        UUID currentRequestId = UUID.randomUUID();
-        UUID previousRequestId = UUID.randomUUID();
-        List<MangaAgentMessage> history = List.of(
-                message(user, chapter, MessageRole.USER, "旧问题", previousRequestId),
-                message(user, chapter, MessageRole.ASSISTANT, "旧回答", previousRequestId),
-                message(user, chapter, MessageRole.USER, "重复的当前问题", currentRequestId),
-                message(user, chapter, MessageRole.SYSTEM, "失败内部记录", currentRequestId)
-        );
-
-        List<AgentMessage> messages = MangaAgentService.buildMessages(chapter, user, history, "当前问题", currentRequestId);
-
-        assertThat(messages).extracting(AgentMessage::content)
-                .anyMatch(content -> content.contains("ArtVerse Manga Director"))
-                .contains("旧问题", "旧回答", "当前问题")
-                .doesNotContain("重复的当前问题", "失败内部记录");
     }
 
     private Fixture fixture() {
@@ -132,6 +110,7 @@ class MangaAgentServiceTest {
         ChapterAccessService accessService = mock(ChapterAccessService.class);
         GenerationGuardService guard = mock(GenerationGuardService.class);
         MangaAgentRunService runService = mock(MangaAgentRunService.class);
+        MangaAgentRunEventPublisher eventPublisher = mock(MangaAgentRunEventPublisher.class);
         ArtVerseProperties properties = new ArtVerseProperties();
         AgentRunToolStatus toolStatus = new AgentRunToolStatus();
         properties.getAgent().setRunTimeoutSeconds(5);
@@ -145,17 +124,20 @@ class MangaAgentServiceTest {
         when(accessService.requireVisible(7L, 1L)).thenReturn(chapter);
         when(apiKeyService.getDecryptedKey(user, "deepseek")).thenReturn("deepseek-key");
         when(apiKeyService.getDecryptedKey(user, "coze")).thenReturn("coze-key");
-        when(messageRepository.findByUserIdAndRequestIdAndRole(eq(1L), any(UUID.class), any(MessageRole.class)))
+        when(messageRepository.findByUserIdAndChapterIdAndRequestIdAndRole(eq(1L), eq(7L), any(UUID.class), any(MessageRole.class)))
                 .thenReturn(Optional.empty());
-        when(messageRepository.findByUserIdAndChapterIdOrderByCreatedAtAsc(1L, 7L)).thenAnswer(invocation -> List.copyOf(saved));
+        when(messageRepository.findByUserIdAndChapterIdOrderByCreatedAtAsc(1L, 7L))
+                .thenAnswer(invocation -> List.copyOf(saved));
         when(messageRepository.save(any(MangaAgentMessage.class))).thenAnswer(invocation -> {
             MangaAgentMessage message = invocation.getArgument(0);
             saved.add(message);
             return message;
         });
 
+        MangaAgentConversationService conversationService =
+                new MangaAgentConversationService(messageRepository, accessService);
         MangaAgentService service = new MangaAgentService(
-                messageRepository,
+                conversationService,
                 gateway,
                 new AgentModelSpecFactory(properties, dotenv),
                 syncService,
@@ -164,9 +146,9 @@ class MangaAgentServiceTest {
                 guard,
                 properties,
                 toolStatus,
-                new ObjectMapper(),
                 new AgentScopeEventMapper(),
                 runService,
+                eventPublisher,
                 Executors.newSingleThreadExecutor()
         );
         return new Fixture(service, gateway, guard, toolStatus, user, saved);
@@ -181,7 +163,7 @@ class MangaAgentServiceTest {
     private static Chapter chapter(User user) {
         Story story = new Story();
         story.setId(3L);
-        story.setTitle("故事");
+        story.setTitle("\u6545\u4e8b");
         story.setUser(user);
         Chapter chapter = new Chapter();
         chapter.setId(7L);
@@ -190,17 +172,6 @@ class MangaAgentServiceTest {
         chapter.setColorMode(ColorMode.BW);
         chapter.setImageCount(1);
         return chapter;
-    }
-
-    private static MangaAgentMessage message(User user, Chapter chapter, MessageRole role, String content, UUID requestId) {
-        MangaAgentMessage message = new MangaAgentMessage();
-        message.setUser(user);
-        message.setStory(chapter.getStory());
-        message.setChapter(chapter);
-        message.setRole(role);
-        message.setContent(content);
-        message.setRequestId(requestId);
-        return message;
     }
 
     private record Fixture(MangaAgentService service,

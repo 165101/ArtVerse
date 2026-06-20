@@ -8,6 +8,7 @@ import com.artverse.domain.User;
 import com.artverse.guard.GenerationGuardService;
 import com.artverse.persistence.ChapterRepository;
 import com.artverse.persistence.MangaImageRepository;
+import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.tool.ToolSuspendException;
 import org.junit.jupiter.api.Test;
 
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -183,6 +185,46 @@ class MangaAgentToolFactoryTest {
         assertThat(waiting.options()).extracting(AgentUserInputRequest.Option::label)
                 .containsExactly("PostgreSQL", "MySQL");
         assertThat(waiting.allowFreeText()).isTrue();
+    }
+
+    @Test
+    void askUserUsesRuntimeContextRequestIdWhenAvailable() {
+        ChapterRepository chapterRepository = mock(ChapterRepository.class);
+        MangaImageRepository mangaImageRepository = mock(MangaImageRepository.class);
+        SceneService sceneService = mock(SceneService.class);
+        StructuredStoryboardService structuredStoryboardService = mock(StructuredStoryboardService.class);
+        GenerationGuardService generationGuardService = mock(GenerationGuardService.class);
+        AgentRunToolStatus runStatus = new AgentRunToolStatus();
+        AgentToolAuditService auditService = new AgentToolAuditService(runStatus);
+        UUID requestId = UUID.randomUUID();
+
+        try (AgentRunToolStatus.RunScope ignored = runStatus.start(1L, 7L, requestId)) {
+            MangaAgentToolFactory.Tools tools = tools(
+                    chapterRepository,
+                    mangaImageRepository,
+                    sceneService,
+                    structuredStoryboardService,
+                    generationGuardService,
+                    auditService,
+                    runStatus,
+                    1L
+            );
+            RuntimeContext runtimeContext = RuntimeContext.builder()
+                    .sessionId("u-1-story-3-chapter-7-manga-director")
+                    .userId("1")
+                    .put(com.artverse.agents.AgentRunContext.class, new com.artverse.agents.AgentRunContext(requestId))
+                    .build();
+
+            assertThatThrownBy(() -> tools.askUser(
+                    "閫夋嫨鏁版嵁搴擄紵",
+                    List.of(Map.of("label", "PostgreSQL", "recommended", true), Map.of("label", "MySQL")),
+                    true,
+                    "闇€瑕佹寔涔呭寲鏂规",
+                    runtimeContext
+            )).isInstanceOf(ToolSuspendException.class);
+        }
+
+        assertThat(runStatus.waitingInput(1L, 7L, requestId)).isNotNull();
     }
 
     private MangaAgentToolFactory.Tools tools(ChapterRepository chapterRepository,

@@ -1,9 +1,11 @@
 package com.artverse.application;
 
+import com.artverse.agents.AgentRunContext;
 import com.artverse.domain.Chapter;
 import com.artverse.domain.MangaImage;
 import com.artverse.guard.GenerationGuardService;
 import com.artverse.persistence.MangaImageRepository;
+import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import io.agentscope.core.tool.ToolSuspendException;
@@ -44,8 +46,8 @@ public class MangaAgentToolFactory {
                 readOnly = true
         )
         @Transactional(readOnly = true)
-        public Map<String, Object> getChapterContext() {
-            return agentToolAuditService.around("get_chapter_context", userId, chapterId, () -> {
+        public Map<String, Object> getChapterContext(RuntimeContext runtimeContext) {
+            return agentToolAuditService.around("get_chapter_context", userId, chapterId, runtimeContext, () -> {
                 Chapter chapter = chapterAccessService.requireVisible(chapterId, userId);
                 List<String> scenes = sceneService.getScenes(chapterId);
                 List<MangaImage> images = mangaImageRepository.findByChapterIdOrderByImageNumberAsc(chapterId);
@@ -72,14 +74,18 @@ public class MangaAgentToolFactory {
             });
         }
 
+        public Map<String, Object> getChapterContext() {
+            return getChapterContext(null);
+        }
+
         @Tool(
                 name = "generate_storyboard",
                 description = "Generate storyboard scenes from the chapter source content and save them to the chapter.",
                 concurrencySafe = false
         )
         @Transactional
-        public Map<String, Object> generateStoryboard() {
-            return agentToolAuditService.around("generate_storyboard", userId, chapterId, () -> {
+        public Map<String, Object> generateStoryboard(RuntimeContext runtimeContext) {
+            return agentToolAuditService.around("generate_storyboard", userId, chapterId, runtimeContext, () -> {
                 Chapter chapter = chapterAccessService.requireVisible(chapterId, userId);
                 return generationGuardService.executeSceneGeneration(
                         userId,
@@ -98,6 +104,10 @@ public class MangaAgentToolFactory {
             });
         }
 
+        public Map<String, Object> generateStoryboard() {
+            return generateStoryboard(null);
+        }
+
         @Tool(
                 name = "save_storyboard",
                 description = "Save edited storyboard scenes to the chapter.",
@@ -105,8 +115,9 @@ public class MangaAgentToolFactory {
         )
         @Transactional
         public Map<String, Object> saveStoryboard(
-                @ToolParam(name = "scenes", description = "Complete storyboard scene list") List<String> scenes) {
-            return agentToolAuditService.around("save_storyboard", userId, chapterId, () -> {
+                @ToolParam(name = "scenes", description = "Complete storyboard scene list") List<String> scenes,
+                RuntimeContext runtimeContext) {
+            return agentToolAuditService.around("save_storyboard", userId, chapterId, runtimeContext, () -> {
                 Chapter chapter = chapterAccessService.requireVisible(chapterId, userId);
                 List<String> updated = sceneService.updateScenes(chapterId, scenes);
                 return Map.of(
@@ -119,6 +130,10 @@ public class MangaAgentToolFactory {
             });
         }
 
+        public Map<String, Object> saveStoryboard(List<String> scenes) {
+            return saveStoryboard(scenes, null);
+        }
+
         @Tool(
                 name = "save_structured_storyboard",
                 description = "Save storyboard pages as structured page/panel data. Input may be a list of pages or an object with pages. Each page must contain 4-6 panels.",
@@ -126,8 +141,9 @@ public class MangaAgentToolFactory {
         )
         @Transactional
         public Map<String, Object> saveStructuredStoryboard(
-                @ToolParam(name = "pages", description = "Storyboard pages with panels") Object pages) {
-            return agentToolAuditService.around("save_structured_storyboard", userId, chapterId, () -> {
+                @ToolParam(name = "pages", description = "Storyboard pages with panels") Object pages,
+                RuntimeContext runtimeContext) {
+            return agentToolAuditService.around("save_structured_storyboard", userId, chapterId, runtimeContext, () -> {
                 Chapter chapter = chapterAccessService.requireVisible(chapterId, userId);
                 List<String> scenes = structuredStoryboardService.normalize(pages, chapter.getImageCount());
                 List<String> updated = sceneService.updateScenes(chapterId, scenes);
@@ -141,6 +157,10 @@ public class MangaAgentToolFactory {
             });
         }
 
+        public Map<String, Object> saveStructuredStoryboard(Object pages) {
+            return saveStructuredStoryboard(pages, null);
+        }
+
         @Tool(
                 name = "ask_user",
                 description = "Pause the manga agent and ask the user to choose between options before continuing. Use this when a creative or workflow decision cannot be made safely.",
@@ -150,13 +170,28 @@ public class MangaAgentToolFactory {
                 @ToolParam(name = "question", description = "Question to show to the user") String question,
                 @ToolParam(name = "options", description = "Options as a list of strings or objects with label/description/recommended") Object options,
                 @ToolParam(name = "allow_free_text", description = "Whether the user may type a custom answer") Boolean allowFreeText,
-                @ToolParam(name = "reason", description = "Short reason why user input is needed") String reason) {
-            return agentToolAuditService.around("ask_user", userId, chapterId, () -> {
+                @ToolParam(name = "reason", description = "Short reason why user input is needed") String reason,
+                RuntimeContext runtimeContext) {
+            return agentToolAuditService.around("ask_user", userId, chapterId, runtimeContext, () -> {
                 AgentUserInputRequest request = buildUserInputRequest(question, options, allowFreeText, reason);
-                agentRunToolStatus.requestUserInputForActiveRun(userId, chapterId, request);
+                requestUserInput(userId, chapterId, runtimeContext, request);
                 throw new ToolSuspendException("Waiting for user input");
             });
         }
+
+        public Map<String, Object> askUser(String question, Object options, Boolean allowFreeText, String reason) {
+            return askUser(question, options, allowFreeText, reason, null);
+        }
+    }
+
+    private void requestUserInput(Long userId, Long chapterId, RuntimeContext runtimeContext,
+                                  AgentUserInputRequest request) {
+        AgentRunContext context = runtimeContext == null ? null : runtimeContext.get(AgentRunContext.class);
+        if (context != null && context.requestId() != null) {
+            agentRunToolStatus.requestUserInput(userId, chapterId, context.requestId(), request);
+            return;
+        }
+        agentRunToolStatus.requestUserInputForActiveRun(userId, chapterId, request);
     }
 
     private AgentUserInputRequest buildUserInputRequest(String question, Object rawOptions,

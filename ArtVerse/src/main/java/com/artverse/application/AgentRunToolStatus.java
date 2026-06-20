@@ -21,7 +21,7 @@ public class AgentRunToolStatus {
             "save_structured_storyboard"
     );
 
-    private final ConcurrentMap<ScopeKey, CopyOnWriteArrayList<RunState>> activeRuns = new ConcurrentHashMap<>();
+    private final ConcurrentMap<ScopeKey, RunState> activeRuns = new ConcurrentHashMap<>();
     private final ConcurrentMap<RunKey, AgentUserInputRequest> waitingInputs = new ConcurrentHashMap<>();
 
     public RunScope start(Long userId, Long chapterId, UUID requestId) {
@@ -29,9 +29,9 @@ public class AgentRunToolStatus {
     }
 
     public RunScope start(Long userId, Long chapterId, UUID requestId, Consumer<ToolEvent> listener) {
-        ScopeKey key = new ScopeKey(userId, chapterId);
+        ScopeKey key = new ScopeKey(userId, chapterId, requestId);
         RunState state = new RunState(userId, chapterId, requestId, listener);
-        activeRuns.computeIfAbsent(key, ignored -> new CopyOnWriteArrayList<>()).add(state);
+        activeRuns.put(key, state);
         return new RunScope(key, state);
     }
 
@@ -41,27 +41,33 @@ public class AgentRunToolStatus {
                 userId, chapterId);
     }
 
+    public void recordSucceeded(String toolName, Long userId, Long chapterId, UUID requestId, long durationMs,
+                                Map<String, Object> result) {
+        record(new ToolEvent(toolName, true, durationMs, null, result == null ? Map.of() : new LinkedHashMap<>(result)),
+                new ScopeKey(userId, chapterId, requestId));
+    }
+
     public void recordFailed(String toolName, Long userId, Long chapterId, long durationMs, String error) {
         record(new ToolEvent(toolName, false, durationMs, error, Map.of()), userId, chapterId);
     }
 
+    public void recordFailed(String toolName, Long userId, Long chapterId, UUID requestId, long durationMs, String error) {
+        record(new ToolEvent(toolName, false, durationMs, error, Map.of()), new ScopeKey(userId, chapterId, requestId));
+    }
+
     public void requestUserInput(Long userId, Long chapterId, UUID requestId, AgentUserInputRequest request) {
         waitingInputs.put(new RunKey(userId, chapterId, requestId), request);
-        CopyOnWriteArrayList<RunState> states = activeRuns.get(new ScopeKey(userId, chapterId));
-        if (states != null) {
-            states.stream()
-                    .filter(state -> requestId.equals(state.requestId()))
-                    .findFirst()
-                    .ifPresent(state -> state.setUserInputRequest(request));
+        RunState state = activeRuns.get(new ScopeKey(userId, chapterId, requestId));
+        if (state != null) {
+            state.setUserInputRequest(request);
         }
     }
 
     public UUID requestUserInputForActiveRun(Long userId, Long chapterId, AgentUserInputRequest request) {
-        CopyOnWriteArrayList<RunState> states = activeRuns.get(new ScopeKey(userId, chapterId));
-        if (states == null || states.isEmpty()) {
+        RunState state = singleActiveState(userId, chapterId);
+        if (state == null) {
             return null;
         }
-        RunState state = states.get(states.size() - 1);
         requestUserInput(userId, chapterId, state.requestId(), request);
         return state.requestId();
     }
@@ -75,11 +81,26 @@ public class AgentRunToolStatus {
     }
 
     private void record(ToolEvent event, Long userId, Long chapterId) {
-        CopyOnWriteArrayList<RunState> states = activeRuns.get(new ScopeKey(userId, chapterId));
-        if (states == null) {
+        RunState state = singleActiveState(userId, chapterId);
+        if (state == null) {
             return;
         }
-        states.forEach(state -> state.add(event));
+        state.add(event);
+    }
+
+    private void record(ToolEvent event, ScopeKey key) {
+        RunState state = activeRuns.get(key);
+        if (state != null) {
+            state.add(event);
+        }
+    }
+
+    private RunState singleActiveState(Long userId, Long chapterId) {
+        List<RunState> matches = activeRuns.entrySet().stream()
+                .filter(entry -> entry.getKey().matches(userId, chapterId))
+                .map(Map.Entry::getValue)
+                .toList();
+        return matches.size() == 1 ? matches.get(0) : null;
     }
 
     public final class RunScope implements AutoCloseable {
@@ -102,14 +123,7 @@ public class AgentRunToolStatus {
                 return;
             }
             closed = true;
-            CopyOnWriteArrayList<RunState> states = activeRuns.get(key);
-            if (states == null) {
-                return;
-            }
-            states.remove(state);
-            if (states.isEmpty()) {
-                activeRuns.remove(key, states);
-            }
+            activeRuns.remove(key, state);
         }
     }
 
@@ -182,7 +196,11 @@ public class AgentRunToolStatus {
                             Map<String, Object> result) {
     }
 
-    private record ScopeKey(Long userId, Long chapterId) {
+    private record ScopeKey(Long userId, Long chapterId, UUID requestId) {
+        private boolean matches(Long userId, Long chapterId) {
+            return java.util.Objects.equals(this.userId, userId)
+                    && java.util.Objects.equals(this.chapterId, chapterId);
+        }
     }
 
     private record RunKey(Long userId, Long chapterId, UUID requestId) {

@@ -33,7 +33,7 @@ class AgentSessionIdFactoryTest {
     @Test
     void sanitizesSegments() {
         assertThat(factory.create("User 1/../../secret", 10L, 20L, AgentTaskType.CHAT))
-                .isEqualTo("u-user-1-..-..-secret-story-10-chapter-20-chat");
+                .isEqualTo("u-user-1-----secret-story-10-chapter-20-chat");
     }
 
     private AgentRunRequest request(AgentModelSpec modelSpec) {

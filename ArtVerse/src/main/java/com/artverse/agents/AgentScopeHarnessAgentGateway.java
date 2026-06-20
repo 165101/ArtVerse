@@ -181,17 +181,23 @@ public class AgentScopeHarnessAgentGateway implements HarnessAgentGateway {
     }
 
     private RuntimeContext buildRuntimeContext(AgentRunRequest request) {
-        return RuntimeContext.builder()
+        RuntimeContext.Builder builder = RuntimeContext.builder()
                 .sessionId(agentSessionIdFactory.create(request))
-                .userId(request.userId())
-                .build();
+                .userId(request.userId());
+        if (request.requestId() != null) {
+            builder.put(AgentRunContext.class, new AgentRunContext(request.requestId()));
+        }
+        return builder.build();
     }
 
     static RuntimeContext buildRuntimeContextForTest(AgentRunRequest request, AgentSessionIdFactory factory) {
-        return RuntimeContext.builder()
+        RuntimeContext.Builder builder = RuntimeContext.builder()
                 .sessionId(factory.create(request))
-                .userId(request.userId())
-                .build();
+                .userId(request.userId());
+        if (request.requestId() != null) {
+            builder.put(AgentRunContext.class, new AgentRunContext(request.requestId()));
+        }
+        return builder.build();
     }
 
     static List<AgentMessage> prepareInputMessages(AgentRunRequest request) {

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -118,6 +119,29 @@ class AgentScopeHarnessAgentGatewayTest {
 
         assertThat(AgentScopeHarnessAgentGateway.buildRuntimeContextForTest(first, factory).getSessionId())
                 .isEqualTo(AgentScopeHarnessAgentGateway.buildRuntimeContextForTest(second, factory).getSessionId());
+    }
+
+    @Test
+    void runtimeContextCarriesBusinessRequestIdWhenPresent() {
+        UUID requestId = UUID.randomUUID();
+        AgentRunRequest request = new AgentRunRequest(
+                "user-1",
+                1L,
+                2L,
+                AgentTaskType.CHAT,
+                List.of(new AgentMessage("user", "hi")),
+                Map.of(),
+                new AgentModelSpec("deepseek", "https://api.deepseek.com", "deepseek-chat", "key-a"),
+                "secret",
+                requestId
+        );
+
+        AgentRunContext context = AgentScopeHarnessAgentGateway
+                .buildRuntimeContextForTest(request, new AgentSessionIdFactory())
+                .get(AgentRunContext.class);
+
+        assertThat(context).isNotNull();
+        assertThat(context.requestId()).isEqualTo(requestId);
     }
 
     @Test

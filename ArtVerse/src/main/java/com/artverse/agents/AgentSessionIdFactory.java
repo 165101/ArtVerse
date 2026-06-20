@@ -26,6 +26,8 @@ public class AgentSessionIdFactory {
         if (normalized.isBlank()) {
             return "none";
         }
-        return normalized.replaceAll("[^a-z0-9._-]", "-");
+        String safe = normalized.replaceAll("[^a-z0-9._-]", "-")
+                .replace("..", "-");
+        return safe.isBlank() ? "none" : safe;
     }
 }
