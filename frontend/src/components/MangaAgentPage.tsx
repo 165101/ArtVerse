@@ -8,19 +8,21 @@ import {
   MessageCircleQuestion,
   Send,
   Sparkles,
+  Square,
   TriangleAlert,
   Wrench,
 } from 'lucide-react';
 import {
   type AgentRunTimelineEvent,
   type AgentUserInputRequest,
+  cancelMangaAgentRun,
   getMangaAgentRunState,
   getMangaAgentMessages,
   getOpenMangaAgentRun,
   listChapters,
   listStories,
-  runMangaAgentStream,
-  resumeMangaAgentRunStream,
+  runMangaAgentAgUiStream,
+  resumeMangaAgentAgUiStream,
   type Chapter,
   type MangaAgentMessage,
   type MangaAgentRunEvent,
@@ -443,6 +445,9 @@ export default function MangaAgentPage() {
   const chapterIdRef = useRef('');
   const activeRequestIdRef = useRef<string | null>(null);
   const runPollTimerRef = useRef<number | undefined>(undefined);
+  const activeStreamControllerRef = useRef<AbortController | null>(null);
+  const draftReplyRef = useRef('');
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const latestRunEvent = runEvents.length > 0 ? runEvents[runEvents.length - 1] : null;
   const latestRunSummary = latestRunEvent ? timelineEventSummary(latestRunEvent) : null;
   const showExecutionPanel = loading || runEvents.length > 0 || !!userInputRequest || !!draftReply;
@@ -452,10 +457,19 @@ export default function MangaAgentPage() {
     chapterIdRef.current = chapterId;
   }, [chapterId]);
 
+  useEffect(() => {
+    draftReplyRef.current = draftReply;
+  }, [draftReply]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages, runEvents, draftReply, loading, userInputRequest]);
+
   useEffect(() => () => {
     if (runPollTimerRef.current !== undefined) {
       window.clearTimeout(runPollTimerRef.current);
     }
+    activeStreamControllerRef.current?.abort();
   }, []);
 
   useEffect(() => {
@@ -649,6 +663,31 @@ export default function MangaAgentPage() {
         }));
         return null;
       }
+      if (agEvent.type === 'CUSTOM') {
+        const value = (agEvent as any).value as AgentRunTimelineEvent | { payload?: Record<string, unknown> } | undefined;
+        if ((agEvent as any).name === 'artverse.tool_audit') {
+          const payload = (value as { payload?: Record<string, unknown> } | undefined)?.payload || {};
+          const tool = String(payload.tool || 'tool');
+          const succeeded = payload.succeeded !== false;
+          setRunStatus(succeeded ? `工具已完成：${tool}` : `工具调用失败：${tool}`);
+          setRunEvents((prev) => appendRunEvent(prev, {
+            type: 'tool',
+            phase: 'tool',
+            label: tool,
+            toolName: tool,
+            status: succeeded ? 'success' : 'failed',
+            data: payload,
+            createdAt: new Date().toISOString(),
+          }));
+          return null;
+        }
+        if (value && 'type' in value && typeof value.type === 'string') {
+          const raw = value as AgentRunTimelineEvent;
+          setRunEvents((prev) => appendRunEvent(prev, raw));
+          if (raw.label) setRunStatus(raw.label);
+        }
+        return null;
+      }
       if (agEvent.type === 'TEXT_MESSAGE_CHUNK' || agEvent.type === 'TEXT_MESSAGE_CONTENT') {
         const delta = String((agEvent as any).delta || (agEvent as any).content || '');
         if (delta) setDraftReply((prev) => prev + delta);
@@ -675,7 +714,7 @@ export default function MangaAgentPage() {
         const requestId = agEvent.runId || fallbackRequestId;
         activeRequestIdRef.current = null;
         clearRunPoll();
-        return { reply: agEvent.result?.reply || '', requestId };
+        return { reply: agEvent.result?.reply || draftReplyRef.current || '', requestId };
       }
       if (agEvent.type === 'RUN_ERROR') {
         activeRequestIdRef.current = null;
@@ -749,6 +788,10 @@ export default function MangaAgentPage() {
     setDraftReply('');
     if (snapshot.status === 'FAILED') {
       setError(snapshot.errorMessage || '智能体请求失败');
+    } else if (snapshot.status === 'CANCELLED') {
+      setRunStatus('本次运行已停止');
+    } else if (snapshot.status === 'INTERRUPTED') {
+      setRunStatus(snapshot.errorMessage || '本次运行已中断，可以重新发起任务');
     }
     void reloadMessages(Number(requestChapterId), requestChapterId);
   };
@@ -797,6 +840,9 @@ export default function MangaAgentPage() {
           { role: 'assistant', content: result.reply, requestId: result.requestId ?? result.request_id ?? requestId },
         ]);
       }
+      if (chapterIdRef.current === requestChapterId && !result.waiting) {
+        await reloadMessages(id, requestChapterId);
+      }
     } catch (err: any) {
       if (chapterIdRef.current !== requestChapterId) return;
       setError(err.message || '请求失败');
@@ -825,7 +871,7 @@ export default function MangaAgentPage() {
       id,
       requestId,
       requestChapterId,
-      (onEvent) => runMangaAgentStream(id, text, requestId, onEvent),
+      (onEvent) => runMangaAgentAgUiStream(id, text, requestId, onEvent),
     );
   };
 
@@ -839,7 +885,7 @@ export default function MangaAgentPage() {
       id,
       requestId,
       requestChapterId,
-      (onEvent) => resumeMangaAgentRunStream(id, requestId, answer, onEvent),
+      (onEvent) => resumeMangaAgentAgUiStream(id, requestId, answer, onEvent),
     );
   };
 
@@ -858,12 +904,16 @@ export default function MangaAgentPage() {
         if (!outcome) return;
         settled = true;
         controller?.abort();
+        if (activeStreamControllerRef.current === controller) {
+          activeStreamControllerRef.current = null;
+        }
         if (outcome instanceof Error) {
           reject(outcome);
         } else {
           resolve(outcome);
         }
       });
+      activeStreamControllerRef.current = controller;
 
       window.setTimeout(async () => {
         if (settled) return;
@@ -881,13 +931,37 @@ export default function MangaAgentPage() {
           } else if (snapshot.status === 'FAILED') {
             settled = true;
             reject(new Error(snapshot.errorMessage || '智能体请求失败'));
+          } else if (snapshot.status === 'CANCELLED' || snapshot.status === 'INTERRUPTED') {
+            settled = true;
+            resolve({ reply: '', requestId });
           }
         } catch (err) {
           settled = true;
           reject(err);
+        } finally {
+          if (activeStreamControllerRef.current === controller) {
+            activeStreamControllerRef.current = null;
+          }
         }
       }, 240000);
     });
+  };
+
+  const cancelActiveRun = async () => {
+    const id = Number(chapterId);
+    const requestId = activeRequestIdRef.current;
+    if (!id || !requestId) return;
+    setError('');
+    setRunStatus('正在停止本次运行...');
+    try {
+      const snapshot = await cancelMangaAgentRun(id, requestId);
+      activeStreamControllerRef.current?.abort();
+      activeStreamControllerRef.current = null;
+      restoreRunSnapshot(snapshot, chapterId);
+      setRunStatus('本次运行已停止');
+    } catch (err: any) {
+      setError(err.message || '停止智能体运行失败');
+    }
   };
 
   const resumeWithAnswer = async (answer: string) => {
@@ -908,6 +982,9 @@ export default function MangaAgentPage() {
           ...prev,
           { role: 'assistant', content: result.reply, requestId: result.requestId ?? result.request_id ?? requestId },
         ]);
+      }
+      if (!result.waiting) {
+        await reloadMessages(id, chapterId);
       }
       setDraftReply('');
       setRunEvents([]);
@@ -1021,60 +1098,6 @@ export default function MangaAgentPage() {
           {error && <div className="mx-4 mt-4 rounded-2xl border border-red-500/30 bg-red-950/40 px-3 py-2 text-sm text-red-200">{error}</div>}
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-            {showExecutionPanel && (
-              <div className="mb-4 border-b border-white/10 bg-white/[0.03] px-1 pb-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${executionBadgeClass(
-                    userInputRequest ? 'waiting' : latestRunSummary?.tone || (loading ? 'thinking' : 'neutral'),
-                  )}`}>
-                    {executionIcon(
-                      userInputRequest ? 'waiting' : latestRunSummary?.tone || (loading ? 'thinking' : 'neutral'),
-                      userInputRequest ? 'question' : latestRunSummary?.icon || (loading ? 'sparkles' : 'clock'),
-                    )}
-                    {userInputRequest ? '等待用户决策' : loading ? '运行中' : '最近执行记录'}
-                  </span>
-                  <span className="inline-flex items-center rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-gray-300">
-                    requestId {formatRequestId(visibleRequestId)}
-                  </span>
-                  {latestRunEvent?.createdAt && (
-                    <span className="text-xs text-gray-500">{formatTimestamp(latestRunEvent.createdAt)}</span>
-                  )}
-                </div>
-                <div className="mt-3 text-sm text-gray-200">{runStatus}</div>
-                {latestRunSummary && (
-                  <div className="mt-3 rounded-2xl border border-white/10 bg-black/15 px-4 py-3">
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5">{executionIcon(latestRunSummary.tone, latestRunSummary.icon)}</div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium text-white">{latestRunSummary.title}</div>
-                        <div className="mt-1 text-xs leading-5 text-gray-400">{latestRunSummary.detail}</div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {runEvents.length > 0 && (
-                  <div className="mt-3 grid gap-2">
-                    {runEvents.slice(-6).map((event, index) => {
-                      const summary = timelineEventSummary(event);
-                      return (
-                        <div key={`${event.type}-${event.createdAt || index}`} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-black/15 px-3 py-3">
-                          <div className="mt-0.5">{executionIcon(summary.tone, summary.icon)}</div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-sm font-medium text-white">{summary.title}</span>
-                              <span className="text-[11px] uppercase tracking-[0.18em] text-gray-500">{event.type}</span>
-                            </div>
-                            <div className="mt-1 text-xs leading-5 text-gray-400">{summary.detail}</div>
-                          </div>
-                          {event.createdAt && <div className="shrink-0 text-[11px] text-gray-500">{formatTimestamp(event.createdAt)}</div>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
             {bootLoading || historyLoading ? (
               <div className="flex h-full items-center justify-center">
                 <Loader2 size={28} className="animate-spin text-amber-300" />
@@ -1107,29 +1130,74 @@ export default function MangaAgentPage() {
                     </div>
                   </div>
                 ))}
-                {loading && !showExecutionPanel && (
+                {showExecutionPanel && (
                   <div className="flex justify-start">
-                    <div className="max-w-[85%] rounded-3xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-gray-300">
-                      <div className="mb-3 inline-flex items-center gap-2 text-gray-400">
-                        <Loader2 size={15} className="animate-spin" />
-                        {runStatus}
+                    <div className="max-w-[85%] rounded-3xl border border-white/10 bg-white/[0.04] px-4 py-4 text-sm text-gray-300">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${executionBadgeClass(
+                          userInputRequest ? 'waiting' : latestRunSummary?.tone || (loading ? 'thinking' : 'neutral'),
+                        )}`}>
+                          {executionIcon(
+                            userInputRequest ? 'waiting' : latestRunSummary?.tone || (loading ? 'thinking' : 'neutral'),
+                            userInputRequest ? 'question' : latestRunSummary?.icon || (loading ? 'sparkles' : 'clock'),
+                          )}
+                          {userInputRequest ? '等待用户决策' : loading ? '运行中' : '最近执行记录'}
+                        </span>
+                        <span className="inline-flex items-center rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-gray-300">
+                          requestId {formatRequestId(visibleRequestId)}
+                        </span>
+                        {latestRunEvent?.createdAt && (
+                          <span className="text-xs text-gray-500">{formatTimestamp(latestRunEvent.createdAt)}</span>
+                        )}
+                        {visibleRequestId && (loading || userInputRequest) && (
+                          <button
+                            onClick={() => void cancelActiveRun()}
+                            className="inline-flex items-center gap-1 rounded-full border border-red-400/30 bg-red-950/30 px-3 py-1 text-xs text-red-100 transition hover:border-red-300/60 hover:bg-red-900/40"
+                          >
+                            <Square size={12} />
+                            停止
+                          </button>
+                        )}
                       </div>
-                      {runEvents.length > 0 && (
-                        <div className="space-y-2 border-l border-white/10 pl-3">
-                          {runEvents.slice(-8).map((event, eventIdx) => (
-                            <div key={`${event.type}-${event.createdAt || eventIdx}`} className="text-xs leading-5 text-gray-400">
-                              <span className={event.status === 'success' || event.status === 'succeeded' ? 'text-emerald-300' : 'text-amber-200'}>
-                                {event.label || event.type}
-                              </span>
+                      <div className="mt-3 text-sm text-gray-200">{runStatus}</div>
+                      {latestRunSummary && (
+                        <div className="mt-3 rounded-2xl border border-white/10 bg-black/15 px-4 py-3">
+                          <div className="flex items-start gap-3">
+                            <div className="mt-0.5">{executionIcon(latestRunSummary.tone, latestRunSummary.icon)}</div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-medium text-white">{latestRunSummary.title}</div>
+                              <div className="mt-1 text-xs leading-5 text-gray-400">{latestRunSummary.detail}</div>
                             </div>
-                          ))}
+                          </div>
                         </div>
                       )}
-                      {draftReply && (
-                        <div className="mt-3 border-t border-white/10 pt-3 text-sm leading-7 text-gray-200">
-                          <MarkdownMessage content={draftReply} />
+                      {runEvents.length > 0 && (
+                        <div className="mt-3 grid gap-2">
+                          {runEvents.slice(-6).map((event, index) => {
+                            const summary = timelineEventSummary(event);
+                            return (
+                              <div key={`${event.type}-${event.createdAt || index}`} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-black/15 px-3 py-3">
+                                <div className="mt-0.5">{executionIcon(summary.tone, summary.icon)}</div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-sm font-medium text-white">{summary.title}</span>
+                                    <span className="text-[11px] uppercase tracking-[0.18em] text-gray-500">{event.type}</span>
+                                  </div>
+                                  <div className="mt-1 text-xs leading-5 text-gray-400">{summary.detail}</div>
+                                </div>
+                                {event.createdAt && <div className="shrink-0 text-[11px] text-gray-500">{formatTimestamp(event.createdAt)}</div>}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
+                    </div>
+                  </div>
+                )}
+                {draftReply && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[85%] rounded-3xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm leading-7 text-gray-200">
+                      <MarkdownMessage content={draftReply} />
                     </div>
                   </div>
                 )}
@@ -1174,6 +1242,7 @@ export default function MangaAgentPage() {
                     </div>
                   </div>
                 )}
+                <div ref={messagesEndRef} />
               </div>
             )}
           </div>

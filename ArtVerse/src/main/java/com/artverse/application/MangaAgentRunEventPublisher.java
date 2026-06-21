@@ -12,6 +12,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -23,7 +24,7 @@ public class MangaAgentRunEventPublisher {
     private final MangaAgentRunService mangaAgentRunService;
     private final ObjectMapper objectMapper;
     private final AgUiEventFactory agUiEventFactory;
-    private final Map<SseEmitter, StreamProtocol> emitterProtocols = new ConcurrentHashMap<>();
+    private final Set<String> activeTextMessages = ConcurrentHashMap.newKeySet();
 
     public enum StreamProtocol {
         LEGACY_AND_AG_UI,
@@ -36,13 +37,6 @@ public class MangaAgentRunEventPublisher {
 
     public RunEventSink agUiOnly(SseEmitter emitter) {
         return new RunEventSink(emitter, StreamProtocol.AG_UI_ONLY);
-    }
-
-    public void markAgUiOnly(SseEmitter emitter) {
-        emitterProtocols.put(emitter, StreamProtocol.AG_UI_ONLY);
-        emitter.onCompletion(() -> emitterProtocols.remove(emitter));
-        emitter.onTimeout(() -> emitterProtocols.remove(emitter));
-        emitter.onError(error -> emitterProtocols.remove(emitter));
     }
 
     public final class RunEventSink {
@@ -81,35 +75,10 @@ public class MangaAgentRunEventPublisher {
         public void sendError(MangaAgentRun run, UUID requestId, String detail) {
             MangaAgentRunEventPublisher.this.sendError(run, emitter, requestId, detail, protocol);
         }
-    }
 
-    public void sendStatus(MangaAgentRun run, SseEmitter emitter, String message, UUID requestId) {
-        sendStatus(run, emitter, message, requestId, protocolFor(emitter));
-    }
-
-    public void sendToolEvent(MangaAgentRun run, SseEmitter emitter, AgentRunToolStatus.ToolEvent event) {
-        sendToolEvent(run, emitter, event, protocolFor(emitter));
-    }
-
-    public void sendRunEvent(MangaAgentRun run, SseEmitter emitter, AgentRunEvent event) {
-        sendRunEvent(run, emitter, event, protocolFor(emitter));
-    }
-
-    public void sendUserInputRequested(MangaAgentRun run, SseEmitter emitter, UUID requestId,
-                                       AgentUserInputRequest request) {
-        sendUserInputRequested(run, emitter, requestId, request, protocolFor(emitter));
-    }
-
-    public void sendUserAnswerEvent(MangaAgentRun run, SseEmitter emitter, UUID requestId, String answer) {
-        sendUserAnswerEvent(run, emitter, requestId, answer, protocolFor(emitter));
-    }
-
-    public void sendDone(MangaAgentRun run, SseEmitter emitter, String reply, UUID requestId) {
-        sendDone(run, emitter, reply, requestId, protocolFor(emitter));
-    }
-
-    public void sendError(MangaAgentRun run, SseEmitter emitter, UUID requestId, String detail) {
-        sendError(run, emitter, requestId, detail, protocolFor(emitter));
+        public void complete() {
+            MangaAgentRunEventPublisher.this.complete(emitter);
+        }
     }
 
     private void sendStatus(MangaAgentRun run, SseEmitter emitter, String message, UUID requestId,
@@ -139,16 +108,18 @@ public class MangaAgentRunEventPublisher {
             sendSse(emitter, "run_event", payload);
         }
         UUID requestId = run == null ? null : run.getRequestId();
-        sendAgUi(emitter, agUiEventFactory.fromRunEvent(run, requestId, event));
-        if ("reply_ready".equals(event.type()) || "run_finished".equals(event.type())) {
-            sendAgUi(emitter, agUiEventFactory.textMessageEnd(requestId));
+        if ("text_delta".equals(event.type())) {
+            ensureTextMessageStarted(emitter, requestId);
         }
+        sendAgUi(emitter, agUiEventFactory.fromRunEvent(run, requestId, event));
     }
 
     private void sendUserInputRequested(MangaAgentRun run, SseEmitter emitter, UUID requestId,
                                         AgentUserInputRequest request, StreamProtocol protocol) {
         publish(run, emitter, "user_input_requested", userInputPayload(requestId, request), protocol);
+        finishTextMessageIfNeeded(emitter, requestId);
         sendAgUi(emitter, agUiEventFactory.userInputRequested(run, requestId, request));
+        complete(emitter);
     }
 
     private void sendUserAnswerEvent(MangaAgentRun run, SseEmitter emitter, UUID requestId, String answer,
@@ -162,7 +133,9 @@ public class MangaAgentRunEventPublisher {
         payload.put("answer", answer == null || answer.isBlank() ? "继续默认方案" : answer.trim());
         payload.put("createdAt", OffsetDateTime.now().toString());
         publish(run, emitter, "run_event", payload, protocol);
-        sendAgUi(emitter, agUiEventFactory.stateSnapshot(run, requestId, "RUNNING", "已收到用户选择，继续执行"));
+        if (protocol == StreamProtocol.LEGACY_AND_AG_UI) {
+            sendAgUi(emitter, agUiEventFactory.stateSnapshot(run, requestId, "RUNNING", "已收到用户选择，继续执行"));
+        }
     }
 
     private void sendDone(MangaAgentRun run, SseEmitter emitter, String reply, UUID requestId,
@@ -171,7 +144,9 @@ public class MangaAgentRunEventPublisher {
         payload.put("reply", reply);
         payload.put("requestId", requestId);
         publish(run, emitter, "done", payload, protocol);
+        finishTextMessageIfNeeded(emitter, requestId);
         sendAgUi(emitter, agUiEventFactory.runFinished(run, requestId, reply));
+        complete(emitter);
     }
 
     private void sendError(MangaAgentRun run, SseEmitter emitter, UUID requestId, String detail,
@@ -180,7 +155,9 @@ public class MangaAgentRunEventPublisher {
         payload.put("detail", detail);
         payload.put("requestId", requestId);
         publish(run, emitter, "error", payload, protocol);
+        finishTextMessageIfNeeded(emitter, requestId);
         sendAgUi(emitter, agUiEventFactory.runError(requestId, detail));
+        complete(emitter);
     }
 
     private void publish(MangaAgentRun run, SseEmitter emitter, String eventName, Map<String, Object> payload,
@@ -248,7 +225,37 @@ public class MangaAgentRunEventPublisher {
         sendSse(emitter, null, event);
     }
 
-    private StreamProtocol protocolFor(SseEmitter emitter) {
-        return emitterProtocols.getOrDefault(emitter, StreamProtocol.LEGACY_AND_AG_UI);
+    private void ensureTextMessageStarted(SseEmitter emitter, UUID requestId) {
+        String key = textMessageKey(emitter, requestId);
+        if (key != null && activeTextMessages.add(key)) {
+            sendAgUi(emitter, agUiEventFactory.textMessageStart(requestId));
+        }
+    }
+
+    private void finishTextMessageIfNeeded(SseEmitter emitter, UUID requestId) {
+        String key = textMessageKey(emitter, requestId);
+        if (key != null && activeTextMessages.remove(key)) {
+            sendAgUi(emitter, agUiEventFactory.textMessageEnd(requestId));
+        }
+    }
+
+    private String textMessageKey(SseEmitter emitter, UUID requestId) {
+        if (emitter == null || requestId == null) {
+            return null;
+        }
+        return System.identityHashCode(emitter) + ":" + requestId;
+    }
+
+    private void complete(SseEmitter emitter) {
+        if (emitter == null) {
+            return;
+        }
+        String emitterPrefix = System.identityHashCode(emitter) + ":";
+        activeTextMessages.removeIf(key -> key.startsWith(emitterPrefix));
+        try {
+            emitter.complete();
+        } catch (Exception e) {
+            log.debug("Failed to complete manga agent SSE: {}", e.getMessage());
+        }
     }
 }

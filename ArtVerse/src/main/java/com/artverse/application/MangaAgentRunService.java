@@ -137,6 +137,43 @@ public class MangaAgentRunService {
     }
 
     @Transactional
+    public MangaAgentRun cancel(UUID requestId, Long userId, Long chapterId, String reason) {
+        return markTerminal(requestId, userId, chapterId, MangaAgentRunStatus.CANCELLED, null,
+                reason == null || reason.isBlank() ? "Agent run cancelled by user" : reason);
+    }
+
+    @Transactional
+    public MangaAgentRun markInterrupted(UUID requestId, Long userId, Long chapterId, String reason) {
+        return markTerminal(requestId, userId, chapterId, MangaAgentRunStatus.INTERRUPTED, null,
+                reason == null || reason.isBlank() ? "Agent run interrupted" : reason);
+    }
+
+    @Transactional
+    public int interruptStaleRunningRuns(OffsetDateTime staleBefore) {
+        List<MangaAgentRun> staleRuns = runRepository.findByStatusAndUpdatedAtBefore(
+                MangaAgentRunStatus.RUNNING,
+                staleBefore
+        );
+        OffsetDateTime now = OffsetDateTime.now();
+        for (MangaAgentRun run : staleRuns) {
+            run.setStatus(MangaAgentRunStatus.INTERRUPTED);
+            run.setErrorMessage("Agent run interrupted because no progress was recorded before " + staleBefore);
+            run.setUserInputRequestJson(null);
+            run.setCompletedAt(now);
+            run.setUpdatedAt(now);
+            runRepository.save(run);
+        }
+        return staleRuns.size();
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isTerminal(UUID requestId, Long userId, Long chapterId) {
+        return runRepository.findByUserIdAndChapterIdAndRequestId(userId, chapterId, requestId)
+                .map(run -> isTerminal(run.getStatus()))
+                .orElse(false);
+    }
+
+    @Transactional
     public void appendEvent(MangaAgentRun run, String eventName, Map<String, Object> payload) {
         MangaAgentRun attachedRun = runRepository.getReferenceById(run.getId());
         MangaAgentRunEventRecord event = new MangaAgentRunEventRecord();
@@ -195,17 +232,28 @@ public class MangaAgentRunService {
         return payload;
     }
 
-    private void markTerminal(UUID requestId, Long userId, Long chapterId, MangaAgentRunStatus status,
-                              String reply, String error) {
+    private MangaAgentRun markTerminal(UUID requestId, Long userId, Long chapterId, MangaAgentRunStatus status,
+                                       String reply, String error) {
         MangaAgentRun run = runRepository.findByUserIdAndChapterIdAndRequestId(userId, chapterId, requestId)
                 .orElseThrow(() -> new BusinessException(404, "Agent run not found"));
+        if (isTerminal(run.getStatus())) {
+            return run;
+        }
         run.setStatus(status);
         run.setFinalReply(reply);
         run.setErrorMessage(error);
         run.setUserInputRequestJson(null);
         run.setCompletedAt(OffsetDateTime.now());
         run.setUpdatedAt(OffsetDateTime.now());
-        runRepository.save(run);
+        return runRepository.save(run);
+    }
+
+    private boolean isTerminal(MangaAgentRunStatus status) {
+        return status == MangaAgentRunStatus.SUCCEEDED
+                || status == MangaAgentRunStatus.DEGRADED
+                || status == MangaAgentRunStatus.FAILED
+                || status == MangaAgentRunStatus.CANCELLED
+                || status == MangaAgentRunStatus.INTERRUPTED;
     }
 
     private RunEventSnapshot toPayload(MangaAgentRunEventRecord event) {

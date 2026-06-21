@@ -8,16 +8,18 @@ All endpoints are scoped to `/api/chapters/{chapterId}/manga-agent`.
 
 - `GET /messages`: returns persisted user, assistant, and system messages for the current user and chapter.
 - `POST /run`: synchronous run. Body: `{ message, requestId? }`. Response: `{ reply, requestId }`.
-- `POST /run-stream`: streaming run. Body: `{ message, requestId? }`. Emits legacy business events (`status`, `run_event`, `tool`, `user_input_requested`, `done`, and `error`) plus AG-UI protocol events as default SSE `message` frames.
-- `POST /ag-ui/run`: streaming run for AG-UI clients. Body: `{ message, requestId? }`. Emits only AG-UI protocol events as default SSE `message` frames, so the frontend can consume it through the official `HttpAgent` event pipeline without legacy event noise.
+- `POST /run-stream`: compatibility streaming run. Body: `{ message, requestId? }`. Emits legacy business events (`status`, `run_event`, `tool`, `user_input_requested`, `done`, and `error`) plus AG-UI protocol events as default SSE `message` frames.
+- `POST /ag-ui/run`: default streaming run for AG-UI clients. Body: `{ message, requestId? }`. Emits only AG-UI protocol events as default SSE `message` frames, so the frontend can consume it through the official `HttpAgent` event pipeline without legacy event noise.
 - `GET /runs/open`: returns the latest `RUNNING` or `WAITING_USER` run snapshot, if any.
 - `GET /runs/{requestId}`: returns a persisted run snapshot with events.
+- `POST /runs/{requestId}/cancel`: marks an open run as `CANCELLED`. The frontend should also abort its active AG-UI subscription, but the persisted run state is the source of truth.
 - `POST /runs/{requestId}/resume`: synchronous resume. Body: `{ answer }`.
-- `POST /runs/{requestId}/resume-stream`: streaming resume. Body: `{ answer }`.
+- `POST /runs/{requestId}/resume-stream`: compatibility streaming resume. Body: `{ answer }`.
+- `POST /ag-ui/runs/{requestId}/resume`: default AG-UI streaming resume. Body: `{ answer }`. Emits only AG-UI protocol events.
 
 Frontend types and stream parsing live in `frontend/src/api.ts`. The frontend depends on `@ag-ui/core` and `@ag-ui/client` for formal AG-UI event types. `ArtVerseMangaAgentHttpAgent` extends the official `HttpAgent` and adapts AG-UI `RunAgentInput` to the current ArtVerse `{ message, requestId }` body. The Manga Agent page restores open runs from persisted business events and consumes live AG-UI events in `frontend/src/components/MangaAgentPage.tsx`.
 
-`MangaAgentPage.tsx` renders the execution panel from the same stream. Live progress should prefer AG-UI events: `RUN_STARTED`, `STATE_SNAPSHOT`, `STEP_STARTED`, `STEP_FINISHED`, `TOOL_CALL_START`, `TOOL_CALL_END`, `TOOL_CALL_RESULT`, `TEXT_MESSAGE_CHUNK`, `RUN_FINISHED`, and `RUN_ERROR`. The panel shows the active request id, latest run status, recent event timeline, tool activity, and human-in-the-loop waiting state. The panel is restored from persisted run events after refresh or reconnect.
+`MangaAgentPage.tsx` renders the execution panel from the same stream. Live progress should prefer AG-UI events: `RUN_STARTED`, `STATE_SNAPSHOT`, `CUSTOM` run/tool audit events, `TEXT_MESSAGE_START`, `TEXT_MESSAGE_CONTENT`, `TEXT_MESSAGE_END`, `RUN_FINISHED`, and `RUN_ERROR`. The panel shows the active request id, latest run status, recent event timeline, tool activity, cancel action, and human-in-the-loop waiting state. The panel is restored from persisted run events after refresh or reconnect, and final messages are synchronized from `/messages` after `RUN_FINISHED`.
 
 ## New Stream Run
 
@@ -47,9 +49,17 @@ Resume requires the same `requestId`. `MangaAgentRunService.requireWaitingRun` v
 
 When `user_input_requested` is received or restored, the frontend execution panel switches to a waiting state and shows the selectable options. Free-text answers are allowed only when the backend request has `allowFreeText=true`.
 
+## Cancellation And Interruption
+
+`CANCELLED` means the user explicitly stopped the run through `POST /runs/{requestId}/cancel`. The frontend aborts the active AG-UI subscription after the backend confirms cancellation. Terminal writes from the background worker must not overwrite `CANCELLED`.
+
+`INTERRUPTED` means the system repaired a stale `RUNNING` run. `MangaAgentService` calls stale-run repair before returning open-run and run-state snapshots. A run whose `updated_at` is older than `max(agent.stale-running-seconds, agent.run-timeout-seconds * 2)` becomes `INTERRUPTED` with an error message and `completed_at`.
+
+`CANCELLED` and `INTERRUPTED` are terminal statuses. They are not returned by `/runs/open`, cannot be resumed, and should be shown as stopped/interrupted states in the frontend rather than continuing to poll.
+
 ## Persistence Rules
 
-`manga_agent_runs` stores the current run status, input message, final reply, error, user input request JSON, and timestamps. The unique constraint is user plus request id.
+`manga_agent_runs` stores the current run status, input message, final reply, error, user input request JSON, and timestamps. Valid statuses are `RUNNING`, `WAITING_USER`, `SUCCEEDED`, `DEGRADED`, `FAILED`, `CANCELLED`, and `INTERRUPTED`. The unique constraint is user plus request id.
 
 `manga_agent_run_events` stores event name, type, phase, label, status, full JSON payload, and creation time. Persisted events allow the frontend to restore progress after refresh or reconnect.
 

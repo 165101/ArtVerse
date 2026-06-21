@@ -42,7 +42,7 @@ For resume, the service requires an existing `WAITING_USER` run, reconstructs a 
 
 `AgentScopeHarnessAgentGateway` creates or reuses a per-user/story/chapter/task/model/workspace agent. For `AgentTaskType.MANGA_DIRECTOR`, it registers `MangaAgentToolFactory.Tools`.
 
-The frontend consumes the backend SSE contract and the formal AG-UI protocol event stream. `MangaAgentRunEventPublisher` still emits legacy business events (`status`, `run_event`, `tool`, `user_input_requested`, `done`, and `error`) for compatibility, and also emits AG-UI JSON events as default SSE `message` frames. `POST /ag-ui/run` emits only AG-UI frames and is intended for the frontend `HttpAgent` adapter. `MangaAgentPage.tsx` should prefer AG-UI events such as `RUN_STARTED`, `STATE_SNAPSHOT`, `STEP_STARTED`, `TOOL_CALL_START`, `TEXT_MESSAGE_CHUNK`, `RUN_FINISHED`, and `RUN_ERROR` for live progress. Keep the execution panel as the single place that explains what the agent is doing; do not add a second competing progress widget.
+The frontend consumes AG-UI as the default live protocol. `POST /ag-ui/run` and `POST /ag-ui/runs/{requestId}/resume` emit only AG-UI frames for the official `HttpAgent` adapter. `POST /run-stream` and `POST /runs/{requestId}/resume-stream` remain compatibility endpoints and may emit legacy business events (`status`, `run_event`, `tool`, `user_input_requested`, `done`, and `error`) plus AG-UI frames. `MangaAgentPage.tsx` should use the AG-UI endpoints by default and treat legacy streams as fallback only. Keep the execution panel as the single place that explains what the agent is doing; do not add a second competing progress widget.
 
 In the main app navigation, `首页` is the Manga Agent conversation surface. `工作区` is the story/project management surface where users create, import, select, and edit stories. Do not point `workspace` back to `home`; that recreates a navigation loop and hides the agent from the first screen.
 
@@ -59,13 +59,13 @@ After a mutating tool succeeds, failures in the final agent response may degrade
 ## Invariants
 
 - `requestId` is the idempotency and resume key. Preserve it across stream retries and resume calls.
-- Only `RUNNING` and `WAITING_USER` are open statuses. Terminal statuses are `SUCCEEDED`, `DEGRADED`, and `FAILED`.
+- Only `RUNNING` and `WAITING_USER` are open statuses. Terminal statuses are `SUCCEEDED`, `DEGRADED`, `FAILED`, `CANCELLED`, and `INTERRUPTED`. `CANCELLED` is user initiated through `/runs/{requestId}/cancel`; `INTERRUPTED` is system repair for stale `RUNNING` runs.
 - Persist non-`text_delta` run events so the frontend can restore an interrupted stream.
 - Frontend run progress should be derived from persisted/streamed events, not from hard-coded timers or generic "running" text alone.
 - AG-UI events are the live observability protocol. Legacy events remain compatibility payloads and persisted restore input.
 - Chapter source text lives in `chapters.novel_content`; chat-derived fallback comes from `Chapter.novelContentOrJoinedMessages()`. `AgentWorkspaceSyncService` writes this into the story workspace `KNOWLEDGE.md` before a Manga Director run.
 - Manga Director must not use AgentScope shell/filesystem tools to find business content. `AgentScopeHarnessAgentGateway` disables Harness shell/filesystem tools for this business agent; chapter/story facts must come from `get_chapter_context`, synced `KNOWLEDGE.md`, and registered ArtVerse tools.
-- When backend emits AG-UI frames, `MangaAgentPage.tsx` must translate `ag_ui_event` frames into the same execution panel state as legacy `run_event` frames; otherwise the frontend appears stuck even though the stream is active.
+- When backend emits AG-UI frames, `MangaAgentPage.tsx` must translate `ag_ui_event` frames into execution panel state and synchronize final persisted messages after `RUN_FINISHED`; otherwise the frontend can appear stuck or require a manual refresh.
 - Use `ask_user` for blocking decisions instead of plain-text questions.
 - Keep controllers thin. Put workflow behavior in application services.
 - Do not expose internal Guard endpoints from user-facing navigation.
@@ -75,6 +75,7 @@ After a mutating tool succeeds, failures in the final agent response may degrade
 - If API payloads, AG-UI mappings, or SSE event names change, update `MangaAgentDtos`, `AgUiEventFactory`, `frontend/src/api.ts`, and the execution panel in `MangaAgentPage.tsx` together.
 - If tool return shapes change, update frontend timeline handling and tests around `AgentRunToolStatus`.
 - If run status transitions change, update `MangaAgentRunService` tests and open-run restore behavior.
+- If cancellation or stale-run repair changes, update backend status tests, frontend terminal-state rendering, and the flow reference.
 - If prompt or workspace knowledge changes, check both `MangaAgentConversationService.buildSystemPrompt` and `AgentWorkspaceSyncService.buildKnowledge`.
 - If AgentScope session/cache key inputs change, update `AgentScopeHarnessAgentGatewayTest` and `AgentSessionIdFactoryTest`.
 - If this skill disagrees with code, trust code first and update this skill or `flow.md`.

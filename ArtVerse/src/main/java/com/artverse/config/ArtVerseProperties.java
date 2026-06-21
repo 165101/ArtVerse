@@ -125,5 +125,6 @@ public class ArtVerseProperties {
     @Data
     public static class Agent {
         private int runTimeoutSeconds = 180;
+        private int staleRunningSeconds = 600;
     }
 }

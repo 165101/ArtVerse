@@ -5,5 +5,7 @@ public enum MangaAgentRunStatus {
     WAITING_USER,
     SUCCEEDED,
     DEGRADED,
-    FAILED
+    FAILED,
+    CANCELLED,
+    INTERRUPTED
 }

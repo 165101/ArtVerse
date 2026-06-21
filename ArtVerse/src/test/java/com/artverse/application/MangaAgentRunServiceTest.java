@@ -19,6 +19,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -82,6 +83,42 @@ class MangaAgentRunServiceTest {
         assertThat(snapshot.events()).hasSize(1);
         assertThat(snapshot.events().get(0).eventName()).isEqualTo("run_event");
         assertThat(snapshot.events().get(0).data()).containsEntry("type", "tool_call_started");
+    }
+
+    @Test
+    void cancelMarksRunTerminalAndTerminalStateIsNotOverwritten() {
+        Fixture fixture = fixture();
+        UUID requestId = UUID.randomUUID();
+        MangaAgentRun run = run(fixture.user, fixture.chapter, requestId, "生成分镜");
+
+        when(fixture.runRepository.findByUserIdAndChapterIdAndRequestId(1L, 7L, requestId))
+                .thenReturn(Optional.of(run));
+        when(fixture.runRepository.save(any(MangaAgentRun.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MangaAgentRun cancelled = fixture.service.cancel(requestId, 1L, 7L, "用户停止");
+        fixture.service.markSucceeded(requestId, 1L, 7L, "不应覆盖");
+
+        assertThat(cancelled.getStatus()).isEqualTo(MangaAgentRunStatus.CANCELLED);
+        assertThat(cancelled.getErrorMessage()).isEqualTo("用户停止");
+        assertThat(cancelled.getFinalReply()).isNull();
+    }
+
+    @Test
+    void interruptStaleRunningRunsOnlyInterruptsOldRunningRuns() {
+        Fixture fixture = fixture();
+        MangaAgentRun run = run(fixture.user, fixture.chapter, UUID.randomUUID(), "生成分镜");
+        OffsetDateTime staleBefore = OffsetDateTime.now().minusMinutes(10);
+
+        when(fixture.runRepository.findByStatusAndUpdatedAtBefore(eq(MangaAgentRunStatus.RUNNING), eq(staleBefore)))
+                .thenReturn(List.of(run));
+        when(fixture.runRepository.save(any(MangaAgentRun.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        int interrupted = fixture.service.interruptStaleRunningRuns(staleBefore);
+
+        assertThat(interrupted).isEqualTo(1);
+        assertThat(run.getStatus()).isEqualTo(MangaAgentRunStatus.INTERRUPTED);
+        assertThat(run.getCompletedAt()).isNotNull();
+        assertThat(run.getErrorMessage()).contains("interrupted");
     }
 
     private Fixture fixture() {

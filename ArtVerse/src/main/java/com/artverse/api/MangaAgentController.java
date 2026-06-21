@@ -67,6 +67,13 @@ public class MangaAgentController {
         return MangaAgentDtos.RunStateResponse.from(mangaAgentService.getRun(chapterId, requestId, user));
     }
 
+    @PostMapping("/runs/{requestId}/cancel")
+    public MangaAgentDtos.RunStateResponse cancelRun(@PathVariable Long chapterId,
+                                                     @PathVariable UUID requestId) {
+        User user = currentUserService.requireCurrentUser();
+        return MangaAgentDtos.RunStateResponse.from(mangaAgentService.cancelRun(chapterId, requestId, user));
+    }
+
     @PostMapping("/runs/{requestId}/resume")
     public MangaAgentDtos.RunResponse resume(@PathVariable Long chapterId,
                                              @PathVariable UUID requestId,
@@ -82,5 +89,13 @@ public class MangaAgentController {
                                    @RequestBody MangaAgentDtos.ResumeRequest body) {
         User user = currentUserService.requireCurrentUser();
         return mangaAgentService.resumeStream(chapterId, requestId, body.answer(), user);
+    }
+
+    @PostMapping("/ag-ui/runs/{requestId}/resume")
+    public SseEmitter resumeAgUi(@PathVariable Long chapterId,
+                                 @PathVariable UUID requestId,
+                                 @RequestBody MangaAgentDtos.ResumeRequest body) {
+        User user = currentUserService.requireCurrentUser();
+        return mangaAgentService.resumeAgUiStream(chapterId, requestId, body.answer(), user);
     }
 }

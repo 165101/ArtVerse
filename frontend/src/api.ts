@@ -314,7 +314,7 @@ export function importStoryPackage(
           return;
         }
         const percent = Math.max(1, Math.min(99, Math.round((event.loaded / event.total) * 100)));
-        onProgress?.({ phase: 'uploading', percent, message: `姝ｅ湪涓婁紶浣滃搧鍖?${percent}%` });
+        onProgress?.({ phase: 'uploading', percent, message: `正在上传作品包 ${percent}%` });
       };
 
       xhr.onload = async () => {
@@ -909,7 +909,7 @@ export function generateMangaStream(
     if (controller.signal.aborted) return;
     reconnectAttempts += 1;
     if (reconnectAttempts > maxReconnectAttempts) {
-      onEvent({ type: 'error', data: { error: reason || '鐢熸垚杩炴帴宸叉柇寮€锛岃绋嶅悗閲嶈瘯' } });
+      onEvent({ type: 'error', data: { error: reason || '生成连接已断开，请稍后重试' } });
       return;
     }
     onEvent({
@@ -971,12 +971,12 @@ export function generateMangaStream(
       }
       if (buffer.trim()) handleLine(buffer);
       if (!receivedTerminalEvent && !controller.signal.aborted) {
-        scheduleReconnect('鐢熸垚杩炴帴宸叉柇寮€锛岃绋嶅悗閲嶈瘯');
+        scheduleReconnect('生成连接已断开，请稍后重试');
       }
     })
     .catch((err) => {
       if (err.name !== 'AbortError') {
-        scheduleReconnect(err.message || '鐢熸垚杩炴帴宸叉柇寮€锛岃绋嶅悗閲嶈瘯');
+        scheduleReconnect(err.message || '生成连接已断开，请稍后重试');
       }
     });
   };
@@ -1190,7 +1190,7 @@ export interface AgentRunTimelineEvent {
   createdAt?: string;
 }
 
-export type MangaAgentRunStatus = 'RUNNING' | 'WAITING_USER' | 'SUCCEEDED' | 'DEGRADED' | 'FAILED';
+export type MangaAgentRunStatus = 'RUNNING' | 'WAITING_USER' | 'SUCCEEDED' | 'DEGRADED' | 'FAILED' | 'CANCELLED' | 'INTERRUPTED';
 
 export interface AgentRunPersistedEvent {
   eventName: MangaAgentRunEvent['type'];
@@ -1261,14 +1261,22 @@ export function runMangaAgentStream(
 
 class ArtVerseMangaAgentHttpAgent extends HttpAgent {
   private readonly message: string;
+  private readonly answer?: string;
   private readonly requestId?: string;
 
-  constructor(chapterId: number, message: string, requestId: string | undefined, abortController: AbortController) {
+  constructor(
+    url: string,
+    message: string,
+    requestId: string | undefined,
+    abortController: AbortController,
+    answer?: string,
+  ) {
     super({
-      url: `${BASE}/api/chapters/${chapterId}/manga-agent/ag-ui/run`,
+      url,
       headers: apiHeaders(true) as Record<string, string>,
     });
     this.message = message;
+    this.answer = answer;
     this.requestId = requestId;
     this.abortController = abortController;
   }
@@ -1281,10 +1289,14 @@ class ArtVerseMangaAgentHttpAgent extends HttpAgent {
         'Content-Type': 'application/json',
         Accept: 'text/event-stream',
       },
-      body: JSON.stringify({
-        message: this.message,
-        requestId: this.requestId || input.runId,
-      }),
+      body: JSON.stringify(this.answer === undefined
+        ? {
+          message: this.message,
+          requestId: this.requestId || input.runId,
+        }
+        : {
+          answer: this.answer,
+        }),
       signal: this.abortController.signal,
     };
   }
@@ -1297,12 +1309,51 @@ export function runMangaAgentAgUiStream(
   onEvent: (event: MangaAgentRunEvent) => void,
 ): AbortController {
   const controller = new AbortController();
-  const agent = new ArtVerseMangaAgentHttpAgent(chapterId, message, requestId, controller);
+  const agent = new ArtVerseMangaAgentHttpAgent(
+    `${BASE}/api/chapters/${chapterId}/manga-agent/ag-ui/run`,
+    message,
+    requestId,
+    controller,
+  );
   const subscription = agent.run({
     threadId: `chapter-${chapterId}`,
     runId: requestId || createClientRequestId(),
     state: {},
     messages: [{ id: `user-${requestId || Date.now()}`, role: 'user', content: message }],
+    tools: [],
+    context: [],
+    forwardedProps: {},
+  }).subscribe({
+    next: (event) => onEvent({ type: 'ag_ui_event', data: event as ArtVerseAgUiEvent }),
+    error: (err) => {
+      if (!controller.signal.aborted) {
+        onEvent({ type: 'error', data: { detail: err?.message || '智能体连接中断', requestId } });
+      }
+    },
+  });
+  controller.signal.addEventListener('abort', () => subscription.unsubscribe());
+  return controller;
+}
+
+export function resumeMangaAgentAgUiStream(
+  chapterId: number,
+  requestId: string,
+  answer: string,
+  onEvent: (event: MangaAgentRunEvent) => void,
+): AbortController {
+  const controller = new AbortController();
+  const agent = new ArtVerseMangaAgentHttpAgent(
+    `${BASE}/api/chapters/${chapterId}/manga-agent/ag-ui/runs/${requestId}/resume`,
+    '',
+    requestId,
+    controller,
+    answer,
+  );
+  const subscription = agent.run({
+    threadId: `chapter-${chapterId}`,
+    runId: requestId,
+    state: {},
+    messages: [],
     tools: [],
     context: [],
     forwardedProps: {},
@@ -1417,6 +1468,14 @@ export async function getOpenMangaAgentRun(chapterId: number): Promise<MangaAgen
 
 export async function getMangaAgentRunState(chapterId: number, requestId: string): Promise<MangaAgentRunSnapshot> {
   const res = await authFetch(`${BASE}/api/chapters/${chapterId}/manga-agent/runs/${requestId}`);
+  if (!res.ok) throw new Error(parseApiError(await res.text()));
+  return res.json();
+}
+
+export async function cancelMangaAgentRun(chapterId: number, requestId: string): Promise<MangaAgentRunSnapshot> {
+  const res = await authFetch(`${BASE}/api/chapters/${chapterId}/manga-agent/runs/${requestId}/cancel`, {
+    method: 'POST',
+  });
   if (!res.ok) throw new Error(parseApiError(await res.text()));
   return res.json();
 }

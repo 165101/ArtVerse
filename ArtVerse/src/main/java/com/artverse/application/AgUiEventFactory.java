@@ -58,41 +58,14 @@ public class AgUiEventFactory {
     public Map<String, Object> fromRunEvent(MangaAgentRun run, UUID requestId, AgentRunEvent runEvent) {
         String type = runEvent.type();
         if ("text_delta".equals(type)) {
-            Map<String, Object> event = base(EVENT_TEXT_MESSAGE_CHUNK);
+            Map<String, Object> event = base(EVENT_TEXT_MESSAGE_CONTENT);
             event.put("messageId", assistantMessageId(requestId));
-            event.put("role", "assistant");
             event.put("delta", runEvent.text() == null ? "" : runEvent.text());
             event.put("rawEvent", rawRunEvent(runEvent));
             return event;
         }
         if ("run_started".equals(type)) {
-            return runStarted(run, requestId, runEvent.label());
-        }
-        if ("model_started".equals(type) || "thinking_started".equals(type) || "context_loading".equals(type)) {
-            Map<String, Object> event = base(EVENT_STEP_STARTED);
-            event.put("stepName", stepName(runEvent));
-            event.put("rawEvent", rawRunEvent(runEvent));
-            return event;
-        }
-        if ("model_finished".equals(type) || "reply_ready".equals(type) || "run_finished".equals(type)) {
-            Map<String, Object> event = base(EVENT_STEP_FINISHED);
-            event.put("stepName", stepName(runEvent));
-            event.put("rawEvent", rawRunEvent(runEvent));
-            return event;
-        }
-        if ("tool_call_started".equals(type) || "tool_started".equals(type) || "tool_call_ready".equals(type)) {
-            Map<String, Object> event = base(EVENT_TOOL_CALL_START);
-            event.put("toolCallId", toolCallId(runEvent));
-            event.put("toolCallName", toolName(runEvent));
-            event.put("parentMessageId", assistantMessageId(requestId));
-            event.put("rawEvent", rawRunEvent(runEvent));
-            return event;
-        }
-        if ("tool_finished".equals(type)) {
-            Map<String, Object> event = base(EVENT_TOOL_CALL_END);
-            event.put("toolCallId", toolCallId(runEvent));
-            event.put("rawEvent", rawRunEvent(runEvent));
-            return event;
+            return stateSnapshot(run, requestId, "RUNNING", runEvent.label());
         }
 
         Map<String, Object> event = base(EVENT_CUSTOM);
@@ -190,25 +163,6 @@ public class AgUiEventFactory {
 
     private String assistantMessageId(UUID requestId) {
         return "assistant-" + runId(requestId);
-    }
-
-    private String stepName(AgentRunEvent event) {
-        if (event.label() != null && !event.label().isBlank()) {
-            return event.label();
-        }
-        return event.type() == null ? "agent_step" : event.type();
-    }
-
-    private String toolName(AgentRunEvent event) {
-        return event.toolName() == null || event.toolName().isBlank() ? "tool" : event.toolName();
-    }
-
-    private String toolCallId(AgentRunEvent event) {
-        Object toolCallId = event.data() == null ? null : event.data().get("toolCallId");
-        if (toolCallId != null && !String.valueOf(toolCallId).isBlank()) {
-            return String.valueOf(toolCallId);
-        }
-        return toolName(event) + "-" + (event.createdAt() == null ? "unknown" : event.createdAt().toInstant().toEpochMilli());
     }
 
     private Map<String, Object> rawRunEvent(AgentRunEvent event) {
