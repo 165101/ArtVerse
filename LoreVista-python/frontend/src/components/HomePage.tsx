@@ -1,0 +1,1026 @@
+import { useEffect, useState, useRef } from 'react';
+import {
+  Plus,
+  BookOpenText,
+  Pencil,
+  Trash2,
+  ImagePlus,
+  ChevronRight,
+  X,
+  Check,
+  Sparkles,
+  Users,
+  Loader2,
+  Download,
+  Upload,
+} from 'lucide-react';
+import {
+  listStories,
+  createStory,
+  updateStory,
+  deleteStory,
+  exportStory,
+  importStoryPackage,
+  uploadStoryCover,
+  mangaThumbUrl,
+  saveStoryCharacters,
+  addStoryRefImage,
+  deleteStoryRefImage,
+  getStoryAssetGroups,
+  createStoryAssetGroup,
+  updateStoryAssetGroup,
+  deleteStoryAssetGroup,
+  addStoryAssetGroupRefImage,
+  deleteStoryAssetGroupRefImage,
+  type Story,
+  type RefImage,
+  type AssetGroup,
+} from '../api';
+
+interface Props {
+  onSelectStory: (story: Story) => void;
+}
+
+export default function HomePage({ onSelectStory }: Props) {
+  const [stories, setStories] = useState<Story[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // New story dialog
+  const [showNew, setShowNew] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+
+  // Edit mode
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+
+  const fileRef = useRef<HTMLInputElement>(null);
+  const importFileRef = useRef<HTMLInputElement>(null);
+  const [uploadingCover, setUploadingCover] = useState<number | null>(null);
+  const [importingStory, setImportingStory] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ message: string; percent?: number } | null>(null);
+  const [exportingStoryId, setExportingStoryId] = useState<number | null>(null);
+
+  // Character card modal
+  const [charModalStoryId, setCharModalStoryId] = useState<number | null>(null);
+  const [charModalText, setCharModalText] = useState('');
+  const [charModalLoading] = useState(false);
+  const [charModalSaving, setCharModalSaving] = useState(false);
+  const [storyCharFlags, setStoryCharFlags] = useState<Record<number, boolean>>({});
+
+  // Ref images modal (multi)
+  const [refModalStoryId, setRefModalStoryId] = useState<number | null>(null);
+  const [refModalImages, setRefModalImages] = useState<RefImage[]>([]);
+  const [refModalMax, setRefModalMax] = useState(4);
+  const [refModalLoading] = useState(false);
+  const [refModalUploading, setRefModalUploading] = useState(false);
+  const [storyRefFlags, setStoryRefFlags] = useState<Record<number, boolean>>({});
+  const refModalFileRef = useRef<HTMLInputElement>(null);
+
+  // Story global asset groups
+  const [assetModalStoryId, setAssetModalStoryId] = useState<number | null>(null);
+  const [assetGroups, setAssetGroups] = useState<AssetGroup[]>([]);
+  const [assetSelectedKey, setAssetSelectedKey] = useState<string>('default');
+  const [assetDraftName, setAssetDraftName] = useState('');
+  const [assetDraftChars, setAssetDraftChars] = useState('');
+  const [assetModalLoading, setAssetModalLoading] = useState(false);
+  const [assetModalSaving, setAssetModalSaving] = useState(false);
+  const [assetRefUploading, setAssetRefUploading] = useState(false);
+  const assetModalRequestRef = useRef(0);
+  const assetFileRef = useRef<HTMLInputElement>(null);
+
+  const activeAssetGroup = assetGroups.find((g) => (g.id === null ? 'default' : String(g.id)) === assetSelectedKey) ?? assetGroups[0];
+  const updateAssetFlags = (storyId: number, groups: AssetGroup[]) => {
+    setStoryCharFlags((prev) => ({ ...prev, [storyId]: groups.some((g) => !!g.character_profiles?.trim()) }));
+    setStoryRefFlags((prev) => ({ ...prev, [storyId]: groups.some((g) => g.ref_count > 0) }));
+  };
+
+  const syncActiveAssetDraft = (group: AssetGroup | undefined) => {
+    setAssetDraftName(group?.name ?? '');
+    setAssetDraftChars(group?.character_profiles ?? '');
+  };
+
+  const openAssetGroupModal = async (storyId: number) => {
+    const requestId = ++assetModalRequestRef.current;
+    setAssetModalStoryId(storyId);
+    setAssetGroups([]);
+    setAssetSelectedKey('default');
+    setAssetModalLoading(true);
+    try {
+      const payload = await getStoryAssetGroups(storyId);
+      if (assetModalRequestRef.current !== requestId) return;
+      setAssetGroups(payload.groups);
+      setRefModalMax(payload.max);
+      syncActiveAssetDraft(payload.groups[0]);
+      updateAssetFlags(storyId, payload.groups);
+    } catch (err: any) {
+      if (assetModalRequestRef.current !== requestId) return;
+      alert(`加载设定组失败: ${err.message}`);
+    } finally {
+      if (assetModalRequestRef.current !== requestId) return;
+      setAssetModalLoading(false);
+    }
+  };
+
+  const selectAssetGroup = (group: AssetGroup) => {
+    setAssetSelectedKey(group.id === null ? 'default' : String(group.id));
+    syncActiveAssetDraft(group);
+  };
+
+  const replaceAssetGroup = (groupId: number | null, patch: Partial<AssetGroup>) => {
+    setAssetGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, ...patch } : g)));
+  };
+
+  const saveAssetGroup = async () => {
+    if (assetModalStoryId === null || !activeAssetGroup) return;
+    setAssetModalSaving(true);
+    try {
+      if (activeAssetGroup.id === null) {
+        await saveStoryCharacters(assetModalStoryId, assetDraftChars);
+        const next = { ...activeAssetGroup, character_profiles: assetDraftChars, has_character_profiles: !!assetDraftChars.trim() };
+        replaceAssetGroup(null, next);
+        updateAssetFlags(assetModalStoryId, assetGroups.map((g) => (g.id === null ? next : g)));
+      } else {
+        const result = await updateStoryAssetGroup(assetModalStoryId, activeAssetGroup.id, {
+          name: assetDraftName,
+          characters: assetDraftChars,
+        });
+        setAssetGroups(result.groups);
+        const next = result.groups.find((g) => g.id === activeAssetGroup.id);
+        syncActiveAssetDraft(next);
+        updateAssetFlags(assetModalStoryId, result.groups);
+      }
+    } catch (err: any) {
+      alert(`保存设定组失败: ${err.message}`);
+    } finally {
+      setAssetModalSaving(false);
+    }
+  };
+
+  const addAssetGroup = async () => {
+    if (assetModalStoryId === null) return;
+    try {
+      const result = await createStoryAssetGroup(assetModalStoryId, `设定组 ${Math.max(assetGroups.length, 1)}`);
+      setAssetGroups(result.groups);
+      setAssetSelectedKey(String(result.group.id));
+      syncActiveAssetDraft(result.group);
+      updateAssetFlags(assetModalStoryId, result.groups);
+    } catch (err: any) {
+      alert(`新增设定组失败: ${err.message}`);
+    }
+  };
+
+  const removeAssetGroup = async () => {
+    if (assetModalStoryId === null || !activeAssetGroup?.id) return;
+    if (!confirm(`删除「${activeAssetGroup.name}」？已选择该组的章节会恢复为默认组。`)) return;
+    try {
+      const result = await deleteStoryAssetGroup(assetModalStoryId, activeAssetGroup.id);
+      setAssetGroups(result.groups);
+      setAssetSelectedKey('default');
+      syncActiveAssetDraft(result.groups[0]);
+      updateAssetFlags(assetModalStoryId, result.groups);
+    } catch (err: any) {
+      alert(`删除设定组失败: ${err.message}`);
+    }
+  };
+
+  const handleAssetRefUpload = async (file: File) => {
+    if (assetModalStoryId === null || !activeAssetGroup) return;
+    setAssetRefUploading(true);
+    try {
+      const reader = new FileReader();
+      const b64 = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.readAsDataURL(file);
+      });
+      const r = activeAssetGroup.id === null
+        ? await addStoryRefImage(assetModalStoryId, b64)
+        : await addStoryAssetGroupRefImage(assetModalStoryId, activeAssetGroup.id, b64);
+      const patch = { ref_images: r.images, ref_count: r.images.length };
+      replaceAssetGroup(activeAssetGroup.id, patch);
+      updateAssetFlags(assetModalStoryId, assetGroups.map((g) => (g.id === activeAssetGroup.id ? { ...g, ...patch } : g)));
+    } catch (err: any) {
+      alert(`上传垫图失败: ${err.message}`);
+    } finally {
+      setAssetRefUploading(false);
+    }
+  };
+
+  const handleAssetRefDelete = async (filename: string) => {
+    if (assetModalStoryId === null || !activeAssetGroup) return;
+    try {
+      const r = activeAssetGroup.id === null
+        ? await deleteStoryRefImage(assetModalStoryId, filename)
+        : await deleteStoryAssetGroupRefImage(assetModalStoryId, activeAssetGroup.id, filename);
+      const patch = { ref_images: r.images, ref_count: r.images.length };
+      replaceAssetGroup(activeAssetGroup.id, patch);
+      updateAssetFlags(assetModalStoryId, assetGroups.map((g) => (g.id === activeAssetGroup.id ? { ...g, ...patch } : g)));
+    } catch (err: any) {
+      alert(`删除垫图失败: ${err.message}`);
+    }
+  };
+
+  const saveCharModal = async () => {
+    if (charModalStoryId === null) return;
+    setCharModalSaving(true);
+    try {
+      await saveStoryCharacters(charModalStoryId, charModalText);
+      setStoryCharFlags((prev) => ({ ...prev, [charModalStoryId]: !!charModalText.trim() }));
+      setCharModalStoryId(null);
+    } catch (err: any) {
+      alert(`保存失败: ${err.message}`);
+    } finally {
+      setCharModalSaving(false);
+    }
+  };
+
+  const handleRefUpload = async (file: File) => {
+    if (refModalStoryId === null) return;
+    setRefModalUploading(true);
+    try {
+      const reader = new FileReader();
+      const b64 = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.readAsDataURL(file);
+      });
+      const r = await addStoryRefImage(refModalStoryId, b64);
+      setRefModalImages(r.images);
+      setRefModalMax(r.max);
+      setStoryRefFlags((prev) => ({ ...prev, [refModalStoryId]: r.images.length > 0 }));
+    } catch (err: any) {
+      alert(`上传垫图失败: ${err.message}`);
+    } finally {
+      setRefModalUploading(false);
+    }
+  };
+
+  const handleRefDelete = async (filename: string) => {
+    if (refModalStoryId === null) return;
+    try {
+      const r = await deleteStoryRefImage(refModalStoryId, filename);
+      setRefModalImages(r.images);
+      setStoryRefFlags((prev) => ({ ...prev, [refModalStoryId]: r.images.length > 0 }));
+    } catch (err: any) {
+      alert(`删除垫图失败: ${err.message}`);
+    }
+  };
+
+  useEffect(() => {
+    loadStories();
+  }, []);
+
+  const loadStories = async () => {
+    try {
+      const list = await listStories();
+      setStories(list);
+      const charFlags = Object.fromEntries(
+        list.map((s) => [s.id, !!s.has_character_profiles])
+      );
+      setStoryCharFlags(charFlags);
+      const refFlags = Object.fromEntries(
+        list.map((s) => [s.id, !!s.has_ref_image])
+      );
+      setStoryRefFlags(refFlags);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreate = async () => {
+    const title = newTitle.trim() || '未命名故事';
+    const desc = newDesc.trim();
+    const s = await createStory(title, desc);
+    setStories((prev) => [s, ...prev]);
+    setStoryCharFlags((prev) => ({ ...prev, [s.id]: !!s.has_character_profiles }));
+    setStoryRefFlags((prev) => ({ ...prev, [s.id]: !!s.has_ref_image }));
+    setShowNew(false);
+    setNewTitle('');
+    setNewDesc('');
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('确定要删除这本小说吗？所有章节、对话、漫画都将被永久删除！')) return;
+    await deleteStory(id);
+    setStories((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const handleExport = async (s: Story) => {
+    setExportingStoryId(s.id);
+    try {
+      await exportStory(s);
+    } catch (err: any) {
+      alert(`导出失败: ${err.message}`);
+    } finally {
+      setExportingStoryId(null);
+    }
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImportingStory(true);
+    setImportProgress({ message: '准备上传作品包...', percent: 0 });
+    try {
+      const imported = await importStoryPackage(file, (progress) => {
+        setImportProgress({ message: progress.message, percent: progress.percent });
+      });
+      await loadStories();
+      onSelectStory(imported);
+    } catch (err: any) {
+      alert(`导入失败: ${err.message}`);
+    } finally {
+      setImportingStory(false);
+      setImportProgress(null);
+    }
+  };
+
+  const startEdit = (s: Story) => {
+    setEditingId(s.id);
+    setEditTitle(s.title);
+    setEditDesc(s.description || '');
+  };
+
+  const saveEdit = async () => {
+    if (editingId === null) return;
+    const updated = await updateStory(editingId, {
+      title: editTitle.trim() || '未命名故事',
+      description: editDesc.trim(),
+    });
+    setStories((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    setEditingId(null);
+  };
+
+  const handleCoverClick = (storyId: number) => {
+    setUploadingCover(storyId);
+    fileRef.current?.click();
+  };
+
+  const handleCoverFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || uploadingCover === null) return;
+    const storyId = uploadingCover;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const b64 = (reader.result as string).split(',')[1];
+        const coverPath = await uploadStoryCover(storyId, b64);
+        setStories((prev) =>
+          prev.map((s) => (s.id === storyId ? { ...s, cover_image: coverPath } : s))
+        );
+      } catch (err: any) {
+        alert(`上传封面失败: ${err.message}`);
+      } finally {
+        setUploadingCover(null);
+      }
+    };
+    reader.onerror = () => {
+      alert('读取封面文件失败');
+      setUploadingCover(null);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  if (loading) {
+    return (
+      <div className="h-screen bg-gray-950 flex items-center justify-center text-gray-400">
+        <div className="flex flex-col items-center gap-3">
+          <BookOpenText size={40} className="animate-pulse" />
+          <span className="text-sm">加载中…</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-gray-100">
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleCoverFile}
+      />
+      <input
+        ref={importFileRef}
+        type="file"
+        accept=".zip,application/zip"
+        className="hidden"
+        onChange={handleImportFile}
+      />
+      {importProgress && (
+        <div className="fixed inset-x-0 top-4 z-[70] mx-auto w-[calc(100%-32px)] max-w-md rounded-xl border border-gray-700 bg-gray-950/95 p-4 shadow-2xl backdrop-blur">
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-100">
+            <Loader2 size={16} className="animate-spin text-violet-400" />
+            <span>{importProgress.message}</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-gray-800">
+            <div
+              className="h-full rounded-full bg-violet-500 transition-all duration-200"
+              style={{ width: `${importProgress.percent ?? 100}%` }}
+            />
+          </div>
+          <p className="mt-2 text-xs text-gray-500">
+            上传完成后服务器还需要解压图片并写入数据库，大作品会多等一会儿。
+          </p>
+        </div>
+      )}
+
+      {/* Header */}
+      <header className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-sm sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-violet-600 flex items-center justify-center">
+              <Sparkles size={18} className="text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold tracking-tight">LoreVista</h1>
+              <p className="text-xs text-gray-500">AI 小说 · 漫画工坊</p>
+            </div>
+          </div>
+          <button
+            onClick={() => importFileRef.current?.click()}
+            disabled={importingStory}
+            className="ml-auto mr-2 flex items-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700
+                       text-gray-200 text-sm font-medium rounded-lg transition-colors disabled:opacity-40"
+            title="导入整本作品"
+          >
+            {importingStory ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+            导入
+          </button>
+          <button
+            onClick={() => setShowNew(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 hover:bg-violet-500
+                       text-white text-sm font-medium rounded-lg transition-colors shadow-lg shadow-violet-900/30"
+          >
+            <Plus size={16} />
+            新建小说
+          </button>
+        </div>
+      </header>
+
+      {/* Content */}
+      <main className="max-w-6xl mx-auto px-6 py-8">
+        {/* New story dialog */}
+        {showNew && (
+          <div className="mb-8 bg-gray-900 border border-gray-700 rounded-xl p-6 shadow-2xl">
+            <h3 className="text-base font-semibold mb-4 flex items-center gap-2">
+              <Plus size={16} className="text-violet-400" />
+              创建新小说
+            </h3>
+            <div className="space-y-3">
+              <input
+                autoFocus
+                placeholder="小说名称"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+                className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-sm
+                           placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+              />
+              <textarea
+                placeholder="简短描述（可选）"
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+                rows={2}
+                className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-sm
+                           placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent resize-none"
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setShowNew(false)}
+                  className="px-4 py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleCreate}
+                  className="px-5 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  创建
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {stories.length === 0 && !showNew && (
+          <div className="flex flex-col items-center justify-center py-32 text-gray-500">
+            <BookOpenText size={56} className="mb-4 text-gray-700" />
+            <p className="text-lg font-medium mb-2">还没有小说</p>
+            <p className="text-sm mb-6">点击"新建小说"开始你的创作之旅</p>
+            <button
+              onClick={() => setShowNew(true)}
+              className="px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <Plus size={16} className="inline mr-1" />
+              新建小说
+            </button>
+          </div>
+        )}
+
+        {/* Story cards grid */}
+        {stories.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {stories.map((s) => (
+              <div
+                key={s.id}
+                className="group bg-gray-900 border border-gray-800 rounded-xl overflow-hidden
+                           hover:border-violet-600/50 hover:shadow-xl hover:shadow-violet-900/10
+                           transition-all duration-200"
+              >
+                {/* Cover */}
+                <div
+                  className="relative h-48 bg-gradient-to-br from-gray-800 to-gray-900 cursor-pointer overflow-hidden"
+                  onClick={() => handleCoverClick(s.id)}
+                >
+                  {s.cover_image ? (
+                    <img
+                      src={mangaThumbUrl(s.cover_image, 720)!}
+                      alt={s.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-gray-600 group-hover:text-gray-500 transition-colors">
+                      <ImagePlus size={32} className="mb-2" />
+                      <span className="text-xs">点击上传封面</span>
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                </div>
+
+                {/* Info */}
+                <div className="p-4">
+                  {editingId === s.id ? (
+                    <div className="space-y-2">
+                      <input
+                        autoFocus
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && saveEdit()}
+                        className="w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm
+                                   focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      />
+                      <textarea
+                        value={editDesc}
+                        onChange={(e) => setEditDesc(e.target.value)}
+                        rows={2}
+                        className="w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm
+                                   focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
+                        placeholder="简短描述（可选）"
+                      />
+                      <div className="flex gap-1 justify-end">
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="p-1.5 text-gray-500 hover:text-gray-300"
+                        >
+                          <X size={14} />
+                        </button>
+                        <button
+                          onClick={saveEdit}
+                          className="p-1.5 text-violet-400 hover:text-violet-300"
+                        >
+                          <Check size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <h3 className="font-semibold text-sm mb-1 line-clamp-1">{s.title}</h3>
+                      {s.description && (
+                        <p className="text-xs text-gray-500 mb-3 line-clamp-2">{s.description}</p>
+                      )}
+                      {!s.description && <div className="mb-3" />}
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-600">
+                          {new Date(s.created_at).toLocaleDateString('zh-CN')}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openAssetGroupModal(s.id);
+                            }}
+                            className={`p-1.5 transition-colors rounded ${
+                              storyCharFlags[s.id]
+                                ? 'text-emerald-400 hover:text-emerald-300'
+                                : 'text-gray-600 hover:text-gray-300'
+                            }`}
+                            title={storyCharFlags[s.id] ? '角色卡（已设定）' : '设置角色卡'}
+                          >
+                            <Users size={13} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openAssetGroupModal(s.id);
+                            }}
+                            className={`p-1.5 transition-colors rounded ${
+                              storyRefFlags[s.id]
+                                ? 'text-amber-400 hover:text-amber-300'
+                                : 'text-gray-600 hover:text-gray-300'
+                            }`}
+                            title={storyRefFlags[s.id] ? '默认垫图（已设定）' : '设置默认垫图'}
+                          >
+                            <ImagePlus size={13} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleExport(s);
+                            }}
+                            disabled={exportingStoryId === s.id}
+                            className="p-1.5 text-gray-600 hover:text-sky-300 transition-colors rounded disabled:opacity-40"
+                            title="导出整本作品"
+                          >
+                            {exportingStoryId === s.id ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              startEdit(s);
+                            }}
+                            className="p-1.5 text-gray-600 hover:text-gray-300 transition-colors rounded"
+                            title="编辑"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(s.id);
+                            }}
+                            className="p-1.5 text-gray-600 hover:text-red-400 transition-colors rounded"
+                            title="删除"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                          <button
+                            onClick={() => onSelectStory(s)}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-violet-600/20 hover:bg-violet-600
+                                       text-violet-400 hover:text-white text-xs font-medium rounded-lg transition-colors"
+                          >
+                            进入
+                            <ChevronRight size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </main>
+
+      {/* Asset groups modal */}
+      {assetModalStoryId !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4"
+          onClick={() => setAssetModalStoryId(null)}
+        >
+          <div
+            className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-5xl shadow-2xl flex flex-col max-h-[88vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <Sparkles size={16} className="text-violet-400" />
+                全局设定组
+              </h3>
+              <button
+                onClick={() => setAssetModalStoryId(null)}
+                className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {assetModalLoading ? (
+              <div className="flex items-center justify-center py-20 text-gray-500">
+                <Loader2 size={24} className="animate-spin" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] min-h-0 flex-1">
+                <div className="border-b md:border-b-0 md:border-r border-gray-800 p-3 overflow-y-auto">
+                  <button
+                    onClick={addAssetGroup}
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2 mb-3 text-xs font-medium rounded-lg bg-violet-600 hover:bg-violet-500 text-white transition-colors"
+                  >
+                    <Plus size={13} />
+                    新增设定组
+                  </button>
+                  <div className="space-y-1">
+                    {assetGroups.map((group) => {
+                      const key = group.id === null ? 'default' : String(group.id);
+                      const active = key === assetSelectedKey;
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => selectAssetGroup(group)}
+                          className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
+                            active
+                              ? 'bg-violet-600/20 border-violet-500 text-white'
+                              : 'bg-gray-950/40 border-gray-800 text-gray-400 hover:text-gray-200 hover:border-gray-700'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-medium truncate">{group.name}</span>
+                            {group.is_default && <span className="text-[10px] text-blue-300 shrink-0">默认</span>}
+                          </div>
+                          <div className="mt-1 text-[10px] text-gray-500">
+                            {group.has_character_profiles ? '角色卡' : '无角色卡'} · {group.ref_count} 张垫图
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="min-h-0 flex flex-col">
+                  {activeAssetGroup ? (
+                    <>
+                      <div className="p-4 border-b border-gray-800 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <input
+                            value={assetDraftName}
+                            onChange={(e) => setAssetDraftName(e.target.value)}
+                            disabled={activeAssetGroup.is_default}
+                            className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-60"
+                          />
+                          {!activeAssetGroup.is_default && (
+                            <button
+                              onClick={removeAssetGroup}
+                              className="p-2 rounded-lg bg-red-950/40 border border-red-900 text-red-300 hover:bg-red-900/60 transition-colors"
+                              title="删除设定组"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
+                        </div>
+                        <textarea
+                          value={assetDraftChars}
+                          onChange={(e) => setAssetDraftChars(e.target.value)}
+                          rows={8}
+                          className="w-full bg-gray-800 text-sm text-gray-200 rounded-lg p-3 resize-none outline-none border border-gray-700 focus:border-violet-500 leading-relaxed"
+                          placeholder={`角色名：塞蕾娜\n外貌：银灰色长发，冰蓝色眼睛...\n\n角色名：艾莉西亚\n外貌：金色长发，紫色眼睛...`}
+                        />
+                        <div className="flex justify-end">
+                          <button
+                            onClick={saveAssetGroup}
+                            disabled={assetModalSaving}
+                            className="px-5 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-40"
+                          >
+                            {assetModalSaving ? '保存中…' : '保存角色卡'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="text-xs text-gray-500">本组垫图 {activeAssetGroup.ref_count}/{refModalMax} 张</div>
+                          <button
+                            onClick={() => assetFileRef.current?.click()}
+                            disabled={assetRefUploading || activeAssetGroup.ref_count >= refModalMax}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-30 transition-colors"
+                          >
+                            {assetRefUploading ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
+                            添加垫图
+                          </button>
+                        </div>
+                        {activeAssetGroup.ref_images.length === 0 ? (
+                          <button
+                            onClick={() => assetFileRef.current?.click()}
+                            disabled={assetRefUploading}
+                            className="w-full flex flex-col items-center justify-center py-12 border-2 border-dashed border-gray-700 hover:border-amber-500/50 rounded-lg text-gray-500 hover:text-gray-400 transition-colors disabled:opacity-40"
+                          >
+                            <ImagePlus size={28} className="mb-2" />
+                            <span className="text-sm">点击上传本组第一张垫图</span>
+                          </button>
+                        ) : (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                            {activeAssetGroup.ref_images.map((img) => (
+                              <div key={img.filename} className="relative aspect-square rounded-lg overflow-hidden border border-gray-700 bg-gray-950">
+                                <img
+                                  src={mangaThumbUrl(img.image_path, 480, img.filename)!}
+                                  alt={img.filename}
+                                  className="w-full h-full object-cover"
+                                  loading="lazy"
+                                  decoding="async"
+                                />
+                                <div className="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-end p-2 pointer-events-none">
+                                  <span className="text-[10px] text-white/80 bg-black/60 px-1.5 py-0.5 rounded">{img.size_kb} KB</span>
+                                </div>
+                                <button
+                                  onClick={() => handleAssetRefDelete(img.filename)}
+                                  className="absolute top-1.5 right-1.5 p-1 rounded-md bg-red-600 hover:bg-red-500 text-white shadow-lg transition-colors"
+                                  title="删除垫图"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <input
+                          ref={assetFileRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleAssetRefUpload(file);
+                            e.target.value = '';
+                          }}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-center py-20 text-gray-500">暂无设定组</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Character card modal */}
+      {charModalStoryId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-lg max-h-[calc(100vh-24px)] sm:max-h-[calc(100vh-32px)] shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <Users size={16} className="text-violet-400" />
+                全局角色外貌卡
+              </h3>
+              <button
+                onClick={() => setCharModalStoryId(null)}
+                className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="px-5 py-4 overflow-y-auto">
+              {charModalLoading ? (
+                <div className="flex items-center justify-center py-12 text-gray-500">
+                  <Loader2 size={24} className="animate-spin" />
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-gray-500 mb-3">
+                    在此设定角色外貌，所有章节默认继承。章节内也可单独覆盖。
+                  </p>
+                  <textarea
+                    value={charModalText}
+                    onChange={(e) => setCharModalText(e.target.value)}
+                    className="w-full bg-gray-800 text-sm text-gray-200 rounded-lg p-3 resize-none outline-none
+                               border border-gray-700 focus:border-violet-500 leading-relaxed"
+                    rows={10}
+                    placeholder={`角色名：塞蕾娜\n性别：女\n发色与发型：银灰色长发…\n\n角色名：艾伦\n性别：男\n…`}
+                    autoFocus
+                  />
+                </>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-800">
+              <button
+                onClick={() => setCharModalStoryId(null)}
+                className="px-4 py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={saveCharModal}
+                disabled={charModalSaving || charModalLoading}
+                className="px-5 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium
+                           rounded-lg transition-colors disabled:opacity-40"
+              >
+                {charModalSaving ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ref images modal (multi) */}
+      {refModalStoryId !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4"
+          onClick={() => setRefModalStoryId(null)}
+        >
+          <div
+            className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[85vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <ImagePlus size={16} className="text-amber-400" />
+                全局默认垫图
+                <span className="text-xs font-normal text-gray-500">
+                  {refModalImages.length}/{refModalMax} 张
+                </span>
+              </h3>
+              <button
+                onClick={() => setRefModalStoryId(null)}
+                className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+                上传默认垫图（最多 {refModalMax} 张），所有章节默认继承，用作人物外貌和画面参考。章节内也可单独覆盖。
+              </p>
+              {refModalLoading ? (
+                <div className="flex items-center justify-center py-12 text-gray-500">
+                  <Loader2 size={24} className="animate-spin" />
+                </div>
+              ) : refModalImages.length === 0 ? (
+                <button
+                  onClick={() => refModalFileRef.current?.click()}
+                  disabled={refModalUploading}
+                  className="w-full flex flex-col items-center justify-center py-12 border-2 border-dashed border-gray-700
+                             hover:border-amber-500/50 rounded-lg text-gray-500 hover:text-gray-400 transition-colors
+                             disabled:opacity-40 cursor-pointer"
+                >
+                  {refModalUploading ? (
+                    <Loader2 size={28} className="animate-spin mb-2" />
+                  ) : (
+                    <ImagePlus size={28} className="mb-2" />
+                  )}
+                  <span className="text-sm">{refModalUploading ? '上传中…' : '点击上传第一张垫图'}</span>
+                </button>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {refModalImages.map((img) => (
+                    <div
+                      key={img.filename}
+                      className="relative group aspect-square rounded-lg overflow-hidden border border-gray-700 bg-gray-950"
+                    >
+                      <img
+                        src={mangaThumbUrl(img.image_path, 480, img.filename)!}
+                        alt={img.filename}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-end p-2 pointer-events-none">
+                        <span className="text-[10px] text-white/80 bg-black/60 px-1.5 py-0.5 rounded">
+                          {img.size_kb} KB
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleRefDelete(img.filename)}
+                        className="absolute top-1.5 right-1.5 p-1 rounded-md bg-red-600 hover:bg-red-500 text-white shadow-lg transition-colors"
+                        title="删除"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <input
+                ref={refModalFileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleRefUpload(file);
+                  e.target.value = '';
+                }}
+              />
+            </div>
+            <div className="flex justify-between items-center px-5 py-3 border-t border-gray-800">
+              <button
+                onClick={() => refModalFileRef.current?.click()}
+                disabled={refModalUploading || refModalImages.length >= refModalMax}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-lg
+                           bg-violet-600 hover:bg-violet-500 text-white
+                           disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title={refModalImages.length >= refModalMax ? `已达上限 ${refModalMax} 张` : '上传一张垫图'}
+              >
+                {refModalUploading ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
+                {refModalImages.length === 0 ? '上传垫图' : '添加一张'}
+              </button>
+              <button
+                onClick={() => setRefModalStoryId(null)}
+                className="px-4 py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
