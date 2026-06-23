@@ -2,7 +2,6 @@ package com.artverse.agents;
 
 import com.artverse.common.BusinessException;
 import com.artverse.config.ArtVerseProperties;
-import io.github.cdimascio.dotenv.Dotenv;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -16,7 +15,6 @@ public class AgentModelSpecFactory {
     private static final int HASH_PREFIX_LENGTH = 12;
 
     private final ArtVerseProperties properties;
-    private final Dotenv dotenv;
 
     public AgentModelSpec deepSeek(String userApiKey) {
         ArtVerseProperties.DeepSeek deepseek = properties.getDeepseek();
@@ -35,8 +33,7 @@ public class AgentModelSpecFactory {
         if (configuredApiKey != null && !configuredApiKey.isBlank()) {
             return configuredApiKey;
         }
-        String envKey = dotenv.get("DEEPSEEK_API_KEY", "");
-        return envKey == null ? "" : envKey;
+        return "";
     }
 
     public static String shortHash(String value) {

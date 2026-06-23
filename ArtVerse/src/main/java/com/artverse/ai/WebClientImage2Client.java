@@ -4,7 +4,6 @@ import com.artverse.common.BusinessException;
 import com.artverse.config.ArtVerseProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.cdimascio.dotenv.Dotenv;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.FileSystemResource;
@@ -34,7 +33,6 @@ public class WebClientImage2Client implements Image2Client {
 
     private final ArtVerseProperties properties;
     private final ObjectMapper objectMapper;
-    private final Dotenv dotenv;
 
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(600);
     private static final int MAX_IN_MEMORY_SIZE = 128 * 1024 * 1024;
@@ -168,10 +166,6 @@ public class WebClientImage2Client implements Image2Client {
         if (configKey != null && !configKey.isBlank()) {
             return configKey;
         }
-        String envKey = dotenv.get("IMAGE_API_KEY", "");
-        if (envKey != null && !envKey.isBlank()) {
-            return envKey;
-        }
-        throw new BusinessException(400, "Image API Key is missing. Please set it in the frontend settings or backend .env.", "Image");
+        throw new BusinessException(400, "Image API Key is missing. Please set it in the frontend settings.", "Image");
     }
 }

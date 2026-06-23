@@ -3,7 +3,6 @@ package com.artverse.config;
 import io.agentscope.core.model.Model;
 import io.agentscope.core.model.OpenAIChatModel;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
-import io.github.cdimascio.dotenv.Dotenv;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,45 +17,6 @@ import java.nio.file.Paths;
 public class AgentScopeConfig {
 
     private static final Path DEFAULT_WORKSPACE = Paths.get(System.getProperty("user.dir", "."), ".agentscope/workspace");
-
-    @Bean
-    public Dotenv dotenv() {
-        Path envFile = Paths.get(".env").toAbsolutePath();
-        if (Files.exists(envFile)) {
-            log.info("Loading .env from: {}", envFile);
-            return Dotenv.configure().directory(envFile.getParent().toString()).load();
-        }
-        log.debug(".env file not found at: {}", envFile);
-        return Dotenv.configure().ignoreIfMissing().load();
-    }
-
-    private static String readFromEnvFile(String key) {
-        Path envFile = Paths.get(".env").toAbsolutePath();
-        if (!Files.exists(envFile)) return null;
-        try {
-            return Files.lines(envFile)
-                    .map(String::trim)
-                    .filter(line -> !line.isEmpty() && !line.startsWith("#"))
-                    .filter(line -> line.startsWith(key + "=") || line.startsWith(key + " ="))
-                    .map(line -> {
-                        int eq = line.indexOf('=');
-                        String value = line.substring(eq + 1).trim();
-                        if (value.length() >= 2) {
-                            char first = value.charAt(0);
-                            char last = value.charAt(value.length() - 1);
-                            if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
-                                value = value.substring(1, value.length() - 1);
-                            }
-                        }
-                        return value;
-                    })
-                    .findFirst()
-                    .orElse(null);
-        } catch (IOException e) {
-            log.warn("Failed to read .env file: {}", e.getMessage());
-            return null;
-        }
-    }
 
     private static String maskKey(String key) {
         if (key == null || key.length() <= 8) return "(not set)";
@@ -97,14 +57,8 @@ public class AgentScopeConfig {
     }
 
     @Bean
-    public Model deepSeekModel(ArtVerseProperties properties, Dotenv dotenv) {
+    public Model deepSeekModel(ArtVerseProperties properties) {
         String apiKey = properties.getDeepseek().getApiKey();
-        if (apiKey == null || apiKey.isBlank()) {
-            apiKey = readFromEnvFile("DEEPSEEK_API_KEY");
-            if (apiKey == null || apiKey.isBlank()) {
-                apiKey = dotenv.get("DEEPSEEK_API_KEY");
-            }
-        }
         if (apiKey == null || apiKey.isBlank()) {
             log.debug("DeepSeek API key not configured at system level; per-user keys will be used.");
         }

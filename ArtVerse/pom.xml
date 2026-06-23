@@ -102,13 +102,6 @@
             <version>${agentscope.version}</version>
         </dependency>
 
-        <!-- dotenv-java for .env file support -->
-        <dependency>
-            <groupId>io.github.cdimascio</groupId>
-            <artifactId>dotenv-java</artifactId>
-            <version>3.2.0</version>
-        </dependency>
-
         <!-- Sa-Token (替代 Spring Security + JWT) -->
         <dependency>
             <groupId>cn.dev33</groupId>

@@ -19,9 +19,9 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import 对话Panel from './components/对话Panel';
-import 漫画Panel from './components/漫画Panel';
-import 漫画AgentPage from './components/漫画AgentPage';
+import ChatPanel from './components/ChatPanel';
+import MangaPanel from './components/MangaPanel';
+import MangaAgentPage from './components/MangaAgentPage';
 import HomePage from './components/HomePage';
 import LoginPage from './components/LoginPage';
 import SquarePage from './components/SquarePage';
@@ -29,7 +29,7 @@ import ImageGenPage from './components/ImageGenPage';
 import MyWorksPage from './components/MyWorksPage';
 import {
   listChapters,
-  create下一章Chapter,
+  createNextChapter,
   deleteChapter,
   getChapter,
   type Chapter,
@@ -123,41 +123,41 @@ function ApiKeySettingsModal({ open, onClose }: { open: boolean; onClose: () => 
         <div className="flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-lg font-semibold text-cream">
             <KeyRound size={18} className="text-amber-accent" />
-            API Keys
+            API 密钥
           </h2>
-          <button onClick={onClose} className="text-warm-gray hover:text-cream transition-colors">
+          <button onClick={onClose} className="text-warm-gray hover:text-cream transition-colors" aria-label="关闭">
             <X size={18} />
           </button>
         </div>
         <div className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm text-cream-dim">DeepSeek</label>
+            <label className="mb-1 block text-sm text-cream-dim">DeepSeek 密钥</label>
             <input type="password" value={dk} onChange={(e) => setDk(e.target.value)} placeholder="sk-..." className="w-full rounded-lg border border-ink-border bg-ink px-3 py-2 text-sm text-cream placeholder-ink-muted focus:border-coral focus:outline-none transition-colors" />
             <a href={DEEPSEEK_USAGE_URL} target="_blank" rel="noopener" className="mt-1 inline-flex items-center gap-1 text-xs text-amber-accent hover:text-amber-accent-light transition-colors">
               <ExternalLink size={10} />
-              Get Key
+              获取密钥
             </a>
           </div>
           <div>
-            <label className="mb-1 block text-sm text-cream-dim">Image</label>
+            <label className="mb-1 block text-sm text-cream-dim">绘图密钥</label>
             <input type="password" value={ik} onChange={(e) => setIk(e.target.value)} placeholder="sk-..." className="w-full rounded-lg border border-ink-border bg-ink px-3 py-2 text-sm text-cream placeholder-ink-muted focus:border-coral focus:outline-none transition-colors" />
             <a href={IMAGE2_CONSOLE_URL} target="_blank" rel="noopener" className="mt-1 inline-flex items-center gap-1 text-xs text-amber-accent hover:text-amber-accent-light transition-colors">
               <ExternalLink size={10} />
-              Get Key
+              获取密钥
             </a>
           </div>
           <div>
-            <label className="mb-1 block text-sm text-cream-dim">Coze</label>
+            <label className="mb-1 block text-sm text-cream-dim">Coze 密钥</label>
             <input type="password" value={ck} onChange={(e) => setCk(e.target.value)} placeholder="pat-..." className="w-full rounded-lg border border-ink-border bg-ink px-3 py-2 text-sm text-cream placeholder-ink-muted focus:border-coral focus:outline-none transition-colors" />
           </div>
         </div>
         <div className="flex items-center justify-between pt-2">
-          <button onClick={() => { if (!confirm('Clear all?')) return; clearApiKeySettings(); setDk(''); setIk(''); setCk(''); }} disabled={!dk && !ik && !ck} className="text-xs text-coral hover:text-coral-light disabled:opacity-30 transition-colors">
-            Clear All
+          <button onClick={() => { if (!confirm('确定清空所有密钥吗？')) return; clearApiKeySettings(); setDk(''); setIk(''); setCk(''); }} disabled={!dk && !ik && !ck} className="text-xs text-coral hover:text-coral-light disabled:opacity-30 transition-colors">
+            清空全部
           </button>
           <div className="flex gap-2">
-            <button onClick={onClose} className="px-4 py-2 text-sm text-cream-dim hover:text-cream transition-colors">Cancel</button>
-            <button onClick={handleSave} className="rounded-lg bg-coral px-4 py-2 text-sm font-medium text-white hover:bg-coral-light transition-colors">Save</button>
+            <button onClick={onClose} className="px-4 py-2 text-sm text-cream-dim hover:text-cream transition-colors">取消</button>
+            <button onClick={handleSave} className="rounded-lg bg-coral px-4 py-2 text-sm font-medium text-white hover:bg-coral-light transition-colors">保存</button>
           </div>
         </div>
       </div>
@@ -208,7 +208,8 @@ export default function App() {
     try {
       const chs = await listChapters(storyId);
       setChapters(chs);
-      const idx = Math.min(Number(localStorage.getItem(LS_CHAPTER_IDX) || '0'), chs.length - 1);
+      const savedIdx = Number(localStorage.getItem(LS_CHAPTER_IDX) || '0');
+      const idx = chs.length > 0 ? Math.min(savedIdx, chs.length - 1) : 0;
       setCurrentIdx(idx);
       if (chs.length > 0) {
         const ch = await getChapter(chs[idx].id);
@@ -242,8 +243,10 @@ export default function App() {
     try {
       const ch = await getChapter(chapterId);
       setCurrentChapter(ch);
-      const chs = await listChapters(activeStoryId!);
-      setChapters(chs);
+      if (activeStoryId) {
+        const chs = await listChapters(activeStoryId);
+        setChapters(chs);
+      }
     } catch {
       return;
     }
@@ -258,11 +261,11 @@ export default function App() {
     localStorage.setItem(LS_CHAPTER_IDX, String(idx));
   };
 
-  const handle上一章 = () => {
+  const handlePrevChapter = () => {
     if (currentIdx > 0) setChapterByIndex(currentIdx - 1);
   };
 
-  const handle下一章 = async () => {
+  const handleNextChapter = async () => {
     if (currentIdx < chapters.length - 1) {
       setChapterByIndex(currentIdx + 1);
       return;
@@ -270,7 +273,7 @@ export default function App() {
     if (activeStoryId) {
       setCreatingChapter(true);
       try {
-        await create下一章Chapter(activeStoryId);
+        await createNextChapter(activeStoryId);
         const chs = await listChapters(activeStoryId);
         setChapters(chs);
         const idx = chs.length - 1;
@@ -279,7 +282,7 @@ export default function App() {
         localStorage.setItem(LS_CHAPTER_ID, String(chs[idx].id));
         localStorage.setItem(LS_CHAPTER_IDX, String(idx));
       } catch (e: any) {
-        alert('Failed: ' + e.message);
+        alert('操作失败：' + e.message);
       } finally {
         setCreatingChapter(false);
       }
@@ -288,7 +291,7 @@ export default function App() {
 
   const handleDelete = async () => {
     if (!currentChapter || chapters.length <= 1 || !activeStoryId) return;
-    if (!confirm('Delete chapter?')) return;
+    if (!confirm('确定删除本话吗？')) return;
     try {
       await deleteChapter(currentChapter.id);
       const chs = await listChapters(activeStoryId);
@@ -297,7 +300,7 @@ export default function App() {
       setCurrentIdx(idx);
       if (chs.length > 0) setCurrentChapter(await getChapter(chs[idx].id));
     } catch (e: any) {
-      alert('Failed: ' + e.message);
+      alert('操作失败：' + e.message);
     }
   };
 
@@ -358,7 +361,7 @@ export default function App() {
               ArtVerse
             </span>
           )}
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="ml-auto text-warm-gray hover:text-cream transition-colors">
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="ml-auto text-warm-gray hover:text-cream transition-colors" aria-label="切换侧边栏">
             {sidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
           </button>
         </div>
@@ -391,7 +394,7 @@ export default function App() {
       </aside>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        {view === 'home' && <漫画AgentPage />}
+        {view === 'home' && <MangaAgentPage />}
         {view === 'square' && <SquarePage />}
         {view === 'workspace' && <HomePage onSelectStory={(story) => loadEditor(story.id)} />}
         {view === 'imagegen' && <ImageGenPage />}
@@ -412,7 +415,7 @@ export default function App() {
                     className="rounded-lg border border-ink-border bg-ink px-2 py-1 text-xs text-cream focus:border-coral focus:outline-none"
                   >
                     {chapters.map((ch, i) => (
-                      <option key={ch.id} value={i}>第{ch.chapter_number}</option>
+                      <option key={ch.id} value={i}>第 {ch.chapter_number} 话</option>
                     ))}
                   </select>
                 )}
@@ -424,7 +427,7 @@ export default function App() {
                 <div className="flex gap-1">
                   {chapters.map((ch: Chapter, idx: number) => (
                     <button key={ch.id} onClick={() => setChapterByIndex(idx)} className={'shrink-0 rounded-full border px-3 py-1.5 text-xs transition-all duration-200 ' + (ch.id === currentChapter?.id ? 'border-coral bg-coral/15 text-coral' : 'border-ink-border bg-ink text-cream-dim hover:text-cream')}>
-                      第{ch.chapter_number}
+                      第 {ch.chapter_number} 话
                     </button>
                   ))}
                 </div>
@@ -447,38 +450,38 @@ export default function App() {
             {isMobile ? (
               <main className="min-h-0 flex-1">
                 <div className={'h-full ' + (mobileTab === 'chat' ? '' : 'hidden')}>
-                  <对话Panel chapter={currentChapter} onMessageSent={refreshCurrentChapter} onChapterRefresh={handleChapterRefresh} />
+                  <ChatPanel chapter={currentChapter} onMessageSent={refreshCurrentChapter} onChapterRefresh={handleChapterRefresh} />
                 </div>
                 <div className={'h-full ' + (mobileTab === 'manga' ? '' : 'hidden')}>
-                  <漫画Panel chapter={currentChapter} onChapterRefresh={handleChapterRefresh} />
+                  <MangaPanel chapter={currentChapter} onChapterRefresh={handleChapterRefresh} />
                 </div>
               </main>
             ) : (
               <main className="flex min-h-0 flex-1">
                 <div className="w-1/2 border-r border-ink-border">
-                  <对话Panel chapter={currentChapter} onMessageSent={refreshCurrentChapter} onChapterRefresh={handleChapterRefresh} />
+                  <ChatPanel chapter={currentChapter} onMessageSent={refreshCurrentChapter} onChapterRefresh={handleChapterRefresh} />
                 </div>
                 <div className="w-1/2">
-                  <漫画Panel chapter={currentChapter} onChapterRefresh={handleChapterRefresh} />
+                  <MangaPanel chapter={currentChapter} onChapterRefresh={handleChapterRefresh} />
                 </div>
               </main>
             )}
 
             <footer className="flex h-14 shrink-0 items-center justify-center gap-2 border-t border-ink-border bg-ink-light/80 px-2 backdrop-blur-md md:gap-4">
-              <button onClick={handle上一章} disabled={currentIdx === 0} className="flex items-center gap-1 rounded-lg border border-ink-border bg-ink px-3 py-2 text-sm font-medium text-cream-dim disabled:cursor-not-allowed disabled:opacity-30 hover:border-ink-muted hover:text-cream transition-colors">
+              <button onClick={handlePrevChapter} disabled={currentIdx === 0} className="flex items-center gap-1 rounded-lg border border-ink-border bg-ink px-3 py-2 text-sm font-medium text-cream-dim disabled:cursor-not-allowed disabled:opacity-30 hover:border-ink-muted hover:text-cream transition-colors">
                 <ChevronLeft size={16} />
-                {!isMobile && '上一章'}
+                {!isMobile && '上一话'}
               </button>
-              <button onClick={handleDelete} disabled={!currentChapter || chapters.length <= 1} className="flex items-center gap-1.5 rounded-lg border border-coral-dark/30 bg-coral-dark/10 px-3 py-2 text-sm font-medium text-coral disabled:cursor-not-allowed disabled:opacity-30 hover:bg-coral-dark/20 transition-colors">
+              <button onClick={handleDelete} disabled={!currentChapter || chapters.length <= 1} className="flex items-center gap-1.5 rounded-lg border border-coral-dark/30 bg-coral-dark/10 px-3 py-2 text-sm font-medium text-coral disabled:cursor-not-allowed disabled:opacity-30 hover:bg-coral-dark/20 transition-colors" aria-label="删除本话">
                 <Trash2 size={14} />
               </button>
               <div className="flex items-center gap-1 text-xs text-ink-muted">
                 {chapters.map((ch: Chapter, i: number) => (
-                  <button key={ch.id} onClick={() => setChapterByIndex(i)} className={'h-2 w-2 rounded-full transition-colors duration-200 ' + (i === currentIdx ? 'bg-coral' : 'bg-ink-muted hover:bg-cream-dim')} />
+                  <button key={ch.id} onClick={() => setChapterByIndex(i)} className={'h-2 w-2 rounded-full transition-colors duration-200 ' + (i === currentIdx ? 'bg-coral' : 'bg-ink-muted hover:bg-cream-dim')} aria-label={`切换到第 ${ch.chapter_number} 话`} />
                 ))}
               </div>
-              <button onClick={handle下一章} disabled={creatingChapter} className="flex items-center gap-1 rounded-lg bg-coral px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40 hover:bg-coral-light transition-colors md:px-5">
-                {currentIdx === chapters.length - 1 ? (<><Plus size={16} />{creatingChapter ? '...' : isMobile ? '新建' : '下一章(新建)'}</>) : (<><span>{!isMobile && '下一章'}</span><ChevronRight size={16} /></>)}
+              <button onClick={handleNextChapter} disabled={creatingChapter} className="flex items-center gap-1 rounded-lg bg-coral px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40 hover:bg-coral-light transition-colors md:px-5">
+                {currentIdx === chapters.length - 1 ? (<><Plus size={16} />{creatingChapter ? '创建中...' : isMobile ? '新建' : '下一话（新建）'}</>) : (<><span>{!isMobile && '下一话'}</span><ChevronRight size={16} /></>)}
               </button>
             </footer>
           </div>

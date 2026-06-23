@@ -5,7 +5,6 @@ import com.artverse.config.ArtVerseProperties;
 import com.artverse.prompt.MangaPromptPolicy;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.cdimascio.dotenv.Dotenv;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -101,11 +100,6 @@ public class CozeClient {
         if (userApiKey != null && !userApiKey.isBlank()) return userApiKey;
         String key = config.getApiKey();
         if (key != null && !key.isBlank()) return key;
-        try {
-            Dotenv dotenv = Dotenv.load();
-            key = dotenv.get("COZE_API_KEY", "");
-        } catch (Exception ignored) {
-        }
         if (key == null || key.isBlank()) {
             throw new BusinessException(502, "Coze API key not configured");
         }
