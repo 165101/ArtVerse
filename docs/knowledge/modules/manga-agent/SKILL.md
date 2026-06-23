@@ -21,6 +21,7 @@ Image generation is not performed by the Manga Agent. The agent prepares or refi
 - Request/response DTOs: `ArtVerse/src/main/java/com/artverse/api/dto/MangaAgentDtos.java`.
 - Public application facade: `ArtVerse/src/main/java/com/artverse/application/MangaAgentService.java`.
 - Workflow execution orchestration: `ArtVerse/src/main/java/com/artverse/application/workflow/MangaWorkflowOrchestrator.java`.
+- Workflow node dispatch and handlers: `ArtVerse/src/main/java/com/artverse/application/workflow/MangaWorkflowNodeRegistry.java`, `ArtVerse/src/main/java/com/artverse/application/workflow/MangaWorkflowNodeHandler.java`, and `ArtVerse/src/main/java/com/artverse/application/workflow/nodes/`.
 - Conversation history and prompt construction: `ArtVerse/src/main/java/com/artverse/application/MangaAgentConversationService.java`.
 - Run state and event snapshots: `ArtVerse/src/main/java/com/artverse/application/MangaAgentRunService.java`.
 - SSE publishing and event persistence: `ArtVerse/src/main/java/com/artverse/application/MangaAgentRunEventPublisher.java`.
@@ -39,7 +40,9 @@ Image generation is not performed by the Manga Agent. The agent prepares or refi
 
 The controller resolves the current user and delegates to `MangaAgentService`. Synchronous calls return a final reply. Stream calls return an `SseEmitter` and run on `mangaGenerationExecutor`.
 
-For a new run, `MangaAgentService` resolves the active `MangaAgentConversation` unless a conversation id is supplied, opens the per-run tool tracking scope, and delegates workflow execution to `MangaWorkflowOrchestrator`. The orchestrator validates the message, checks idempotency through `GenerationGuardService.executeMangaAgentRun`, saves the user message, builds agent messages from the selected conversation history, syncs chapter knowledge to the AgentScope workspace, builds an `AgentRunRequest`, and executes the AgentScope gateway.
+For a new run, `MangaAgentService` resolves the active `MangaAgentConversation` unless a conversation id is supplied, opens the per-run tool tracking scope, and delegates workflow execution to `MangaWorkflowOrchestrator`. The orchestrator validates the message, builds a workflow context snapshot, checks idempotency through `GenerationGuardService.executeMangaAgentRun`, and dispatches to a `MangaWorkflowNodeHandler` through `MangaWorkflowNodeRegistry`.
+
+`MangaDirectorAgentNode` is the first concrete node. It saves the user message, builds agent messages from the selected conversation history, syncs chapter knowledge to the AgentScope workspace, builds an `AgentRunRequest`, invokes AgentScope through the gateway, maps streamed events, and saves the final assistant or degraded reply. Non-Director routes currently fall back to the Director handler until dedicated Storyboard, Review, HITL, and generation nodes are added.
 
 For resume, the service requires an existing `WAITING_USER` run, reconstructs a continuation message from the stored user-input request and the user's answer, clears waiting state, and continues the same request id.
 
@@ -79,6 +82,7 @@ After a mutating tool succeeds, failures in the final agent response may degrade
 - When backend emits AG-UI frames, `MangaAgentPage.tsx` must translate `ag_ui_event` frames into execution panel state and synchronize final persisted messages after `RUN_FINISHED`; otherwise the frontend can appear stuck or require a manual refresh.
 - Use `ask_user` for blocking decisions instead of plain-text questions.
 - Keep controllers thin. Put public entrypoint behavior in `MangaAgentService` and workflow execution behavior in `MangaWorkflowOrchestrator`.
+- Keep AgentScope execution inside workflow nodes. `MangaWorkflowOrchestrator` should own routing, guard/run lifecycle, and workflow-level status events, not direct AgentScope request construction.
 - Do not expose internal Guard endpoints from user-facing navigation.
 
 ## Change Checklist

@@ -1,39 +1,24 @@
 package com.artverse.application.workflow;
 
-import com.artverse.agents.AgentMessage;
 import com.artverse.agents.AgentModelSpec;
 import com.artverse.agents.AgentModelSpecFactory;
 import com.artverse.agents.AgentRunEvent;
-import com.artverse.agents.AgentRunRequest;
-import com.artverse.agents.AgentScopeEventMapper;
-import com.artverse.agents.AgentTaskType;
-import com.artverse.agents.AgentWorkspaceSyncService;
-import com.artverse.agents.HarnessAgentGateway;
 import com.artverse.application.AgentRunToolStatus;
-import com.artverse.application.AgentUserInputRequest;
-import com.artverse.application.AgentUserInputRequiredException;
 import com.artverse.application.ApiKeyService;
 import com.artverse.application.MangaAgentConversationService;
 import com.artverse.application.MangaAgentRunEventPublisher;
 import com.artverse.application.MangaAgentRunService;
-import com.artverse.config.ArtVerseProperties;
 import com.artverse.domain.Chapter;
 import com.artverse.domain.MangaAgentConversation;
-import com.artverse.domain.MangaAgentMessage;
 import com.artverse.domain.MangaAgentRun;
-import com.artverse.domain.MessageRole;
 import com.artverse.domain.User;
 import com.artverse.guard.GenerationGuardService;
-import io.agentscope.core.tool.ToolSuspendException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
@@ -42,16 +27,12 @@ import java.util.concurrent.atomic.AtomicReference;
 public class MangaWorkflowOrchestrator {
 
     private final MangaAgentConversationService mangaAgentConversationService;
-    private final HarnessAgentGateway harnessAgentGateway;
     private final AgentModelSpecFactory agentModelSpecFactory;
-    private final AgentWorkspaceSyncService agentWorkspaceSyncService;
     private final ApiKeyService apiKeyService;
     private final GenerationGuardService generationGuardService;
-    private final ArtVerseProperties properties;
-    private final AgentScopeEventMapper agentScopeEventMapper;
     private final MangaAgentRunService mangaAgentRunService;
-    private final MangaAgentRunEventPublisher mangaAgentRunEventPublisher;
     private final MangaWorkflowContextAssembler mangaWorkflowContextAssembler;
+    private final MangaWorkflowNodeRegistry nodeRegistry;
 
     public Map<String, Object> runWithToolState(MangaAgentConversation conversation, String message, UUID effectiveRequestId,
                                                 AgentRunToolStatus.RunState toolState) {
@@ -85,7 +66,9 @@ public class MangaWorkflowOrchestrator {
                                                  AgentModelSpec modelSpec, AgentRunToolStatus.RunState toolState) {
         MangaWorkflowContextSnapshot workflowContext = mangaWorkflowContextAssembler.assemble(conversation, message);
         log.info("Workflow route for request {} -> {}", effectiveRequestId, workflowContext.route());
-        return runLeader(conversation, message, effectiveRequestId, deepseekApiKey, modelSpec, toolState);
+        MangaWorkflowExecutionContext context = executionContext(
+                conversation, message, effectiveRequestId, deepseekApiKey, modelSpec, toolState, workflowContext);
+        return nodeRegistry.handlerFor(workflowContext.route()).run(context);
     }
 
     public void runStreamLeader(MangaAgentConversation conversation, String message, UUID effectiveRequestId,
@@ -120,50 +103,10 @@ public class MangaWorkflowOrchestrator {
                 modelSpec.model(),
                 AgentModelSpecFactory.shortHash(modelSpec.baseUrl()),
                 () -> runWorkflowStream(conversation, message, effectiveRequestId, sink, toolState,
-                        deepseekApiKey, modelSpec, run, user, chapter)
+                        deepseekApiKey, modelSpec, run)
         );
 
         completeRun(run, sink, chapterId, user, effectiveRequestId, result);
-    }
-
-    public Map<String, Object> runLeader(MangaAgentConversation conversation, String message, UUID effectiveRequestId,
-                                         String deepseekApiKey, AgentModelSpec modelSpec,
-                                         AgentRunToolStatus.RunState toolState) {
-        Chapter chapter = conversation.getChapter();
-        User user = conversation.getUser();
-        List<AgentMessage> messages = prepareAgentMessages(conversation, message, effectiveRequestId);
-        agentWorkspaceSyncService.syncMangaDirectorKnowledge(chapter.getId(), String.valueOf(user.getId()));
-
-        AgentRunRequest request = buildRunRequest(conversation, messages, modelSpec, deepseekApiKey, effectiveRequestId);
-        try {
-            String reply = harnessAgentGateway.generateText(request).block(agentRunTimeout());
-            throwIfWaitingForUser(toolState);
-            if (reply == null || reply.isBlank()) {
-                throw new com.artverse.common.BusinessException(502, "Agent returned empty response");
-            }
-            mangaAgentConversationService.saveMessage(conversation, MessageRole.ASSISTANT, reply, effectiveRequestId);
-            return Map.of("reply", reply);
-        } catch (AgentUserInputRequiredException e) {
-            throw e;
-        } catch (ToolSuspendException e) {
-            throwIfWaitingForUser(toolState);
-            throw new com.artverse.common.BusinessException(502, "Agent tool suspended without user input");
-        } catch (com.artverse.common.BusinessException e) {
-            if (toolState.hasSuccessfulMutatingTool()) {
-                return mangaAgentConversationService.fallbackAfterToolSuccess(
-                        conversation, effectiveRequestId, toolState, e.getMessage());
-            }
-            mangaAgentConversationService.saveFailureMessage(conversation, e.getMessage(), effectiveRequestId);
-            throw e;
-        } catch (Exception e) {
-            String error = e.getMessage() == null ? "unknown error" : e.getMessage();
-            if (toolState.hasSuccessfulMutatingTool()) {
-                return mangaAgentConversationService.fallbackAfterToolSuccess(
-                        conversation, effectiveRequestId, toolState, error);
-            }
-            mangaAgentConversationService.saveFailureMessage(conversation, error, effectiveRequestId);
-            throw new com.artverse.common.BusinessException(502, "Agent service failed: " + error);
-        }
     }
 
     public Map<String, Object> runWorkflowStream(MangaAgentConversation conversation, String message,
@@ -171,8 +114,10 @@ public class MangaWorkflowOrchestrator {
                                                  MangaAgentRunEventPublisher.RunEventSink sink,
                                                  AgentRunToolStatus.RunState toolState,
                                                  String deepseekApiKey, AgentModelSpec modelSpec,
-                                                 MangaAgentRun run, User user, Chapter chapter) {
+                                                 MangaAgentRun run) {
         MangaWorkflowContextSnapshot workflowContext = mangaWorkflowContextAssembler.assemble(conversation, message);
+        MangaWorkflowExecutionContext context = executionContext(
+                conversation, message, effectiveRequestId, deepseekApiKey, modelSpec, toolState, workflowContext);
         sink.sendRunEvent(run, AgentRunEvent.step(
                 MangaWorkflowNode.ROUTING.name(),
                 "running",
@@ -191,16 +136,8 @@ public class MangaWorkflowOrchestrator {
                         "warnings", workflowContext.warnings()
                 )
         ));
-        List<AgentMessage> messages = prepareAgentMessages(conversation, message, effectiveRequestId);
-        sink.sendRunEvent(run, AgentRunEvent.step(
-                MangaWorkflowNode.GENERATING.name(),
-                "running",
-                "正在调用智能体生成内容",
-                Map.of("provider", modelSpec.provider(), "model", modelSpec.model())
-        ));
-        agentWorkspaceSyncService.syncMangaDirectorKnowledge(chapter.getId(), String.valueOf(user.getId()));
-        AgentRunRequest request = buildRunRequest(conversation, messages, modelSpec, deepseekApiKey, effectiveRequestId);
-        Map<String, Object> response = executeStreamedRequest(run, sink, toolState, request, chapter, user, effectiveRequestId);
+        Map<String, Object> response = nodeRegistry.handlerFor(workflowContext.route())
+                .stream(context, new MangaWorkflowStreamContext(run, sink));
         sink.sendRunEvent(run, AgentRunEvent.step(
                 MangaWorkflowNode.EVALUATING.name(),
                 "running",
@@ -208,61 +145,6 @@ public class MangaWorkflowOrchestrator {
                 Map.of("degraded", Boolean.TRUE.equals(response.get("agent_final_response_degraded")))
         ));
         return response;
-    }
-
-    public Map<String, Object> executeStreamedRequest(MangaAgentRun run, MangaAgentRunEventPublisher.RunEventSink sink,
-                                                      AgentRunToolStatus.RunState toolState, AgentRunRequest request,
-                                                      Chapter chapter, User user, UUID requestId) {
-        StringBuilder reply = new StringBuilder();
-        AtomicBoolean finished = new AtomicBoolean(false);
-        try {
-            harnessAgentGateway.streamEvents(request)
-                    .doOnNext(event -> agentScopeEventMapper.map(event).ifPresent(mapped -> {
-                        if (mangaAgentRunService.isTerminal(requestId, user.getId(), chapter.getId())) {
-                            throw new AgentRunTerminatedException();
-                        }
-                        if ("text_delta".equals(mapped.type()) && mapped.text() != null) {
-                            reply.append(mapped.text());
-                        }
-                        sink.sendRunEvent(run, mapped);
-                    }))
-                    .blockLast(agentRunTimeout());
-            finished.set(true);
-            throwIfWaitingForUser(toolState);
-        } catch (AgentRunTerminatedException e) {
-            return Map.of("reply", "");
-        } catch (AgentUserInputRequiredException e) {
-            throw e;
-        } catch (ToolSuspendException e) {
-            throwIfWaitingForUser(toolState);
-            throw new com.artverse.common.BusinessException(502, "Agent tool suspended without user input");
-        } catch (Exception e) {
-            if (mangaAgentRunService.isTerminal(requestId, user.getId(), chapter.getId())) {
-                return Map.of("reply", "");
-            }
-            String error = e.getMessage() == null ? "unknown error" : e.getMessage();
-            if (toolState.hasSuccessfulMutatingTool()) {
-                return mangaAgentConversationService.fallbackAfterToolSuccess(
-                        run.getConversation(), requestId, toolState, error);
-            }
-            mangaAgentConversationService.saveFailureMessage(run.getConversation(), error, requestId);
-            throw new com.artverse.common.BusinessException(502, "Agent service failed: " + error);
-        }
-
-        String finalReply = reply.toString().trim();
-        if (mangaAgentRunService.isTerminal(requestId, user.getId(), chapter.getId())) {
-            return Map.of("reply", "");
-        }
-        if (!finished.get() || finalReply.isBlank()) {
-            if (toolState.hasSuccessfulMutatingTool()) {
-                return mangaAgentConversationService.fallbackAfterToolSuccess(
-                        run.getConversation(), requestId, toolState, "Agent returned empty response");
-            }
-            throw new com.artverse.common.BusinessException(502, "Agent returned empty response");
-        }
-
-        mangaAgentConversationService.saveMessage(run.getConversation(), MessageRole.ASSISTANT, finalReply, requestId);
-        return Map.of("reply", finalReply);
     }
 
     public void completeRun(MangaAgentRun run, MangaAgentRunEventPublisher.RunEventSink sink, Long chapterId, User user,
@@ -281,36 +163,6 @@ public class MangaWorkflowOrchestrator {
         sink.sendDone(run, reply, requestId);
     }
 
-    public List<AgentMessage> prepareAgentMessages(MangaAgentConversation conversation, String message, UUID requestId) {
-        mangaAgentConversationService.saveMessage(conversation, MessageRole.USER, message, requestId);
-        List<MangaAgentMessage> history = mangaAgentConversationService.listMessages(conversation);
-        return mangaAgentConversationService.buildMessages(
-                conversation.getChapter(),
-                conversation.getUser(),
-                history,
-                message,
-                requestId
-        );
-    }
-
-    public AgentRunRequest buildRunRequest(MangaAgentConversation conversation, List<AgentMessage> messages,
-                                           AgentModelSpec modelSpec, String deepseekApiKey, UUID requestId) {
-        User user = conversation.getUser();
-        Chapter chapter = conversation.getChapter();
-        return new AgentRunRequest(
-                String.valueOf(user.getId()),
-                chapter.getStory().getId(),
-                chapter.getId(),
-                AgentTaskType.MANGA_DIRECTOR,
-                messages,
-                Map.of("coze_api_key", nullToBlank(apiKeyService.getDecryptedKey(user, "coze"))),
-                modelSpec,
-                deepseekApiKey,
-                requestId,
-                conversation.getConversationUuid()
-        );
-    }
-
     public String requireDeepseekApiKey(User user) {
         String deepseekApiKey = apiKeyService.getDecryptedKey(user, "deepseek");
         if (deepseekApiKey == null || deepseekApiKey.isBlank()) {
@@ -319,21 +171,21 @@ public class MangaWorkflowOrchestrator {
         return deepseekApiKey;
     }
 
-    public void throwIfWaitingForUser(AgentRunToolStatus.RunState toolState) {
-        AgentUserInputRequest waiting = toolState.userInputRequest();
-        if (waiting != null) {
-            throw new AgentUserInputRequiredException(waiting);
-        }
-    }
-
-    public Duration agentRunTimeout() {
-        return Duration.ofSeconds(Math.max(1, properties.getAgent().getRunTimeoutSeconds()));
-    }
-
-    private String nullToBlank(String value) {
-        return value == null ? "" : value;
-    }
-
-    private static class AgentRunTerminatedException extends RuntimeException {
+    private MangaWorkflowExecutionContext executionContext(MangaAgentConversation conversation, String message,
+                                                           UUID effectiveRequestId, String deepseekApiKey,
+                                                           AgentModelSpec modelSpec,
+                                                           AgentRunToolStatus.RunState toolState,
+                                                           MangaWorkflowContextSnapshot workflowContext) {
+        return new MangaWorkflowExecutionContext(
+                conversation,
+                message,
+                effectiveRequestId,
+                deepseekApiKey,
+                modelSpec,
+                toolState,
+                conversation.getUser(),
+                conversation.getChapter(),
+                workflowContext
+        );
     }
 }

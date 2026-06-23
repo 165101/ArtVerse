@@ -39,14 +39,15 @@ Frontend types and stream parsing live in `frontend/src/api.ts`. The frontend de
 5. `MangaAgentRunService.startOrReuse` creates or resumes a conversation-scoped `MangaAgentRun` with status `RUNNING`.
 6. A `status` SSE event announces context loading.
 7. `GenerationGuardService.executeMangaAgentRun` protects the run with idempotency/rate-limit logic.
-8. `prepareAgentMessages` saves the user message to the selected conversation and builds history-limited agent messages from that conversation only.
-9. `AgentWorkspaceSyncService.syncMangaDirectorKnowledge` writes `KNOWLEDGE.md` for the user/story workspace.
-10. `MangaWorkflowOrchestrator.buildRunRequest` creates an `AgentRunRequest` with user, story, chapter, conversation id, task type, model, user API key, and request id.
-11. `AgentScopeHarnessAgentGateway.streamEvents` obtains the cached `HarnessAgent` from `AgentScopeAgentFactory`, builds per-call context through `AgentScopeRuntimeContextFactory`, and sends messages to AgentScope.
-12. `AgentScopeEventMapper` maps AgentScope events into `AgentRunEvent`; text deltas append to the final reply.
-13. `MangaAgentRunEventPublisher` sends SSE events and persists non-text run events. It also maps the run lifecycle into formal AG-UI events through `AgUiEventFactory` and emits them as default SSE `message` frames.
-14. On success, `MangaAgentRunService.markSucceeded` stores the final reply and `done` is emitted.
-15. The frontend execution panel summarizes the latest events and keeps the user informed while the assistant response is still streaming.
+8. `MangaWorkflowContextAssembler` builds route/context metadata. `MangaWorkflowNodeRegistry` selects the matching workflow node. Routes without a dedicated handler currently fall back to the Director node.
+9. `MangaDirectorAgentNode` saves the user message to the selected conversation and builds history-limited agent messages from that conversation only.
+10. `AgentWorkspaceSyncService.syncMangaDirectorKnowledge` writes `KNOWLEDGE.md` for the user/story workspace.
+11. `MangaDirectorAgentNode` creates an `AgentRunRequest` with user, story, chapter, conversation id, task type, model, user API key, and request id.
+12. `AgentScopeHarnessAgentGateway.streamEvents` obtains the cached `HarnessAgent` from `AgentScopeAgentFactory`, builds per-call context through `AgentScopeRuntimeContextFactory`, and sends messages to AgentScope.
+13. `AgentScopeEventMapper` maps AgentScope events into `AgentRunEvent`; text deltas append to the final reply.
+14. `MangaAgentRunEventPublisher` sends SSE events and persists non-text run events. It also maps the run lifecycle into formal AG-UI events through `AgUiEventFactory` and emits them as default SSE `message` frames.
+15. On success, `MangaAgentRunService.markSucceeded` stores the final reply and `done` is emitted.
+16. The frontend execution panel summarizes the latest events and keeps the user informed while the assistant response is still streaming.
 
 ## Human-In-The-Loop Resume
 
@@ -54,7 +55,7 @@ Frontend types and stream parsing live in `frontend/src/api.ts`. The frontend de
 
 `MangaAgentToolkitFactory` registers Manga Director tools into `context-tools`, `storyboard-tools`, and `hitl-tools`. `MangaHitlTools.ask_user` stores the current `AgentUserInputRequest` in `AgentRunToolStatus` using `AgentRunContext.requestId`, then throws `ToolSuspendException`.
 
-`MangaWorkflowOrchestrator` detects the tool-suspended waiting state and raises `AgentUserInputRequiredException`. `MangaAgentService` catches it, marks the run `WAITING_USER`, emits `user_input_requested`, and completes the stream. The frontend displays the options and can call resume.
+`MangaDirectorAgentNode` detects the tool-suspended waiting state and raises `AgentUserInputRequiredException`. `MangaAgentService` catches it, marks the run `WAITING_USER`, emits `user_input_requested`, and completes the stream. The frontend displays the options and can call resume.
 
 Resume requires the same `conversationId` and `requestId`. `MangaAgentRunService.requireWaitingRun` verifies status inside the selected conversation. `MangaAgentConversationService.resumeMessage` combines original input, the stored question, and the user's answer into a continuation prompt. The run is marked `RUNNING` and the normal stream flow continues.
 

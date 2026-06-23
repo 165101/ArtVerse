@@ -103,15 +103,18 @@ Remaining follow-up:
 
 ### Phase 3: Split run execution from run coordination
 
-Status: foundation implemented.
+Status: node foundation implemented.
 
 - Extracted `MangaWorkflowOrchestrator` for sync and streaming workflow execution.
 - Kept `MangaAgentService` as the public application facade for controllers, conversations, run scope, resume/cancel/open-run APIs, and SSE sink setup.
 - Preserved existing API contracts while reducing `MangaAgentService` method size and AgentScope execution coupling.
+- Added `MangaWorkflowNodeHandler`, `MangaWorkflowNodeRegistry`, and `MangaWorkflowStreamContext`.
+- Extracted current Director AgentScope execution into `MangaDirectorAgentNode`.
+- `MangaWorkflowOrchestrator` now owns validation, guard/run lifecycle, route/context events, and node dispatch instead of direct AgentScope request construction.
 
 Remaining follow-up:
 
-- Split `MangaWorkflowOrchestrator` into node handlers such as Director, Storyboard, Review, and Generation.
+- Add dedicated Storyboard, Review, HITL, and Generation node handlers. Routes without a concrete handler currently fall back to Director to preserve behavior.
 - Add explicit workflow result types for reply, degraded flag, waiting state, and terminal/cancelled outcome.
 - Move node-specific tool group selection into workflow node configuration.
 

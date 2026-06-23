@@ -16,6 +16,7 @@ public record MangaWorkflowExecutionContext(
         AgentModelSpec modelSpec,
         AgentRunToolStatus.RunState toolState,
         User user,
-        Chapter chapter
+        Chapter chapter,
+        MangaWorkflowContextSnapshot workflowContext
 ) {
 }
