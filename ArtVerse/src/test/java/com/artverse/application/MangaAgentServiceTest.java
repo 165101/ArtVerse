@@ -38,11 +38,11 @@ class MangaAgentServiceTest {
         Fixture fixture = fixture();
         UUID requestId = UUID.randomUUID();
         when(fixture.orchestrator.runWithToolState(any(), any(), any(), any()))
-                .thenReturn(Map.of("reply", "完成"));
+                .thenReturn(Map.of("reply", "瀹屾垚"));
 
         MangaAgentService.RunResult result = fixture.service.run(7L, "continue", requestId, fixture.user);
 
-        assertThat(result.reply()).isEqualTo("完成");
+        assertThat(result.reply()).isEqualTo("瀹屾垚");
     }
 
     @Test
@@ -60,7 +60,7 @@ class MangaAgentServiceTest {
     @Test
     void runStreamCreatesEmitter() {
         Fixture fixture = fixture();
-        assertThat(fixture.service.runStream(7L, "continue", UUID.randomUUID(), fixture.user)).isNotNull();
+        assertThat(fixture.service.runAgUiStream(7L, "continue", UUID.randomUUID(), fixture.user)).isNotNull();
     }
 
     private Fixture fixture() {
@@ -120,7 +120,7 @@ class MangaAgentServiceTest {
     private static Chapter chapter(User user) {
         Story story = new Story();
         story.setId(3L);
-        story.setTitle("故事");
+        story.setTitle("鏁呬簨");
         story.setUser(user);
         Chapter chapter = new Chapter();
         chapter.setId(7L);
@@ -138,7 +138,7 @@ class MangaAgentServiceTest {
         conversation.setUser(user);
         conversation.setStory(chapter.getStory());
         conversation.setChapter(chapter);
-        conversation.setTitle("测试对话");
+        conversation.setTitle("娴嬭瘯瀵硅瘽");
         conversation.setStatus(MangaAgentConversationStatus.ACTIVE);
         return conversation;
     }

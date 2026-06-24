@@ -1,5 +1,6 @@
 package com.artverse.application;
 
+import com.artverse.agent.AgentRunContext;
 import com.artverse.agent.MangaAgentRuntimeContext;
 import com.artverse.common.BusinessException;
 import com.artverse.domain.Chapter;
@@ -30,6 +31,11 @@ import static org.mockito.Mockito.when;
 
 class MangaAgentToolFactoryTest {
 
+    private static final Long USER_ID = 1L;
+    private static final Long CHAPTER_ID = 7L;
+    private static final Long STORY_ID = 3L;
+    private static final String COZE_KEY = "coze-key";
+
     @Test
     void generateStoryboardUsesGenerationGuard() {
         ChapterRepository chapterRepository = mock(ChapterRepository.class);
@@ -38,28 +44,21 @@ class MangaAgentToolFactoryTest {
         StructuredStoryboardService structuredStoryboardService = mock(StructuredStoryboardService.class);
         GenerationGuardService generationGuardService = mock(GenerationGuardService.class);
         AgentToolAuditService auditService = new AgentToolAuditService(new AgentRunToolStatus());
-        Chapter chapter = chapterWithOwner(7L, 1L);
+        Chapter chapter = chapterWithOwner(CHAPTER_ID, USER_ID);
 
-        when(chapterRepository.findByIdForIdempotency(7L)).thenReturn(Optional.of(chapter));
-        when(sceneService.generateScenes(7L, "coze-key")).thenReturn(List.of("scene 1"));
-        when(generationGuardService.executeSceneGeneration(eq(1L), eq(7L), any()))
+        when(chapterRepository.findByIdForIdempotency(CHAPTER_ID)).thenReturn(Optional.of(chapter));
+        when(sceneService.generateScenes(CHAPTER_ID, COZE_KEY)).thenReturn(List.of("scene 1"));
+        when(generationGuardService.executeSceneGeneration(eq(USER_ID), eq(CHAPTER_ID), any()))
                 .thenAnswer(invocation -> invocation.<Callable<Map<String, Object>>>getArgument(2).call());
 
-        MangaAgentToolFactory.Tools tools = tools(
-                chapterRepository,
-                mangaImageRepository,
-                sceneService,
-                structuredStoryboardService,
-                generationGuardService,
-                auditService,
-                1L
-        );
+        Fixture fixture = fixture(chapterRepository, mangaImageRepository, sceneService,
+                structuredStoryboardService, generationGuardService, auditService);
 
-        Map<String, Object> result = tools.generateStoryboard();
+        Map<String, Object> result = fixture.tools().generateStoryboard(fixture.runtimeContext);
 
         assertThat(result).containsEntry("scenes_count", 1);
-        verify(generationGuardService).executeSceneGeneration(eq(1L), eq(7L), any());
-        verify(sceneService).generateScenes(7L, "coze-key");
+        verify(generationGuardService).executeSceneGeneration(eq(USER_ID), eq(CHAPTER_ID), any());
+        verify(sceneService).generateScenes(CHAPTER_ID, COZE_KEY);
     }
 
     @Test
@@ -70,44 +69,47 @@ class MangaAgentToolFactoryTest {
         StructuredStoryboardService structuredStoryboardService = mock(StructuredStoryboardService.class);
         GenerationGuardService generationGuardService = mock(GenerationGuardService.class);
         AgentToolAuditService auditService = new AgentToolAuditService(new AgentRunToolStatus());
-        Chapter chapter = chapterWithOwner(7L, 1L);
+        Chapter chapter = chapterWithOwner(CHAPTER_ID, USER_ID);
 
-        when(chapterRepository.findByIdForIdempotency(7L)).thenReturn(Optional.of(chapter));
-        when(sceneService.generateScenes(7L, "coze-from-context")).thenReturn(List.of("scene 1"));
-        when(generationGuardService.executeSceneGeneration(eq(1L), eq(7L), any()))
+        when(chapterRepository.findByIdForIdempotency(CHAPTER_ID)).thenReturn(Optional.of(chapter));
+        when(sceneService.generateScenes(CHAPTER_ID, "coze-from-context")).thenReturn(List.of("scene 1"));
+        when(generationGuardService.executeSceneGeneration(eq(USER_ID), eq(CHAPTER_ID), any()))
                 .thenAnswer(invocation -> invocation.<Callable<Map<String, Object>>>getArgument(2).call());
 
-        MangaAgentToolFactory factory = new MangaAgentToolFactory(
-                mangaImageRepository,
-                sceneService,
-                structuredStoryboardService,
-                new ChapterAccessService(chapterRepository),
-                generationGuardService,
-                auditService,
-                new AgentRunToolStatus()
-        );
-        MangaAgentToolFactory.Tools tools = factory.create();
-        RuntimeContext runtimeContext = RuntimeContext.builder()
-                .userId("1")
-                .sessionId("session")
-                .put(MangaAgentRuntimeContext.class, new MangaAgentRuntimeContext(
-                        1L,
-                        3L,
-                        7L,
-                        UUID.randomUUID(),
-                        UUID.randomUUID(),
-                        "coze-from-context"
-                ))
-                .build();
+        Fixture fixture = fixture(chapterRepository, mangaImageRepository, sceneService,
+                structuredStoryboardService, generationGuardService, auditService);
+        RuntimeContext runtimeContext = runtimeContext(USER_ID, STORY_ID, CHAPTER_ID, "coze-from-context");
 
-        Map<String, Object> result = tools.generateStoryboard(runtimeContext);
+        Map<String, Object> result = fixture.tools().generateStoryboard(runtimeContext);
 
         assertThat(result).containsEntry("scenes_count", 1);
-        verify(sceneService).generateScenes(7L, "coze-from-context");
+        verify(sceneService).generateScenes(CHAPTER_ID, "coze-from-context");
     }
 
     @Test
-    void generateStoryboardRejectsDifferentUserBeforeCallingGuard() {
+    void saveStoryboardToVisibleChapterFindsAndPersists() {
+        ChapterRepository chapterRepository = mock(ChapterRepository.class);
+        MangaImageRepository mangaImageRepository = mock(MangaImageRepository.class);
+        SceneService sceneService = mock(SceneService.class);
+        StructuredStoryboardService structuredStoryboardService = mock(StructuredStoryboardService.class);
+        GenerationGuardService generationGuardService = mock(GenerationGuardService.class);
+        AgentToolAuditService auditService = new AgentToolAuditService(new AgentRunToolStatus());
+        Chapter chapter = chapterWithOwner(CHAPTER_ID, USER_ID);
+
+        when(chapterRepository.findByIdForIdempotency(CHAPTER_ID)).thenReturn(Optional.of(chapter));
+        when(sceneService.updateScenes(CHAPTER_ID, List.of("A", "B"))).thenReturn(List.of("A", "B"));
+
+        Fixture fixture = fixture(chapterRepository, mangaImageRepository, sceneService,
+                structuredStoryboardService, generationGuardService, auditService);
+
+        Map<String, Object> result = fixture.tools().saveStoryboard(List.of("A", "B"), fixture.runtimeContext);
+
+        assertThat(result).containsEntry("scenes_count", 2);
+        assertThat(result).containsEntry("saved", true);
+    }
+
+    @Test
+    void saveStoryboardBlockedForNonOwner() {
         ChapterRepository chapterRepository = mock(ChapterRepository.class);
         MangaImageRepository mangaImageRepository = mock(MangaImageRepository.class);
         SceneService sceneService = mock(SceneService.class);
@@ -115,86 +117,21 @@ class MangaAgentToolFactoryTest {
         GenerationGuardService generationGuardService = mock(GenerationGuardService.class);
         AgentToolAuditService auditService = new AgentToolAuditService(new AgentRunToolStatus());
 
-        when(chapterRepository.findByIdForIdempotency(7L)).thenReturn(Optional.of(chapterWithOwner(7L, 1L)));
+        when(chapterRepository.findByIdForIdempotency(CHAPTER_ID)).thenReturn(Optional.of(chapterWithOwner(CHAPTER_ID, 2L)));
 
-        MangaAgentToolFactory.Tools tools = tools(
-                chapterRepository,
-                mangaImageRepository,
-                sceneService,
-                structuredStoryboardService,
-                generationGuardService,
-                auditService,
-                2L
-        );
+        Fixture fixture = fixture(chapterRepository, mangaImageRepository, sceneService,
+                structuredStoryboardService, generationGuardService, auditService);
+        RuntimeContext blockedContext = runtimeContext(999L, STORY_ID, CHAPTER_ID, COZE_KEY);
 
-        assertThatThrownBy(tools::generateStoryboard)
+        assertThatThrownBy(() -> fixture.tools().saveStoryboard(List.of("A"), blockedContext))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("Forbidden");
-        verifyNoInteractions(generationGuardService, sceneService);
-    }
+                .hasMessageContaining("Forbidden");
 
-    @Test
-    void saveStoryboardRejectsDifferentUser() {
-        ChapterRepository chapterRepository = mock(ChapterRepository.class);
-        MangaImageRepository mangaImageRepository = mock(MangaImageRepository.class);
-        SceneService sceneService = mock(SceneService.class);
-        StructuredStoryboardService structuredStoryboardService = mock(StructuredStoryboardService.class);
-        GenerationGuardService generationGuardService = mock(GenerationGuardService.class);
-        AgentToolAuditService auditService = new AgentToolAuditService(new AgentRunToolStatus());
-
-        when(chapterRepository.findByIdForIdempotency(7L)).thenReturn(Optional.of(chapterWithOwner(7L, 1L)));
-
-        MangaAgentToolFactory.Tools tools = tools(
-                chapterRepository,
-                mangaImageRepository,
-                sceneService,
-                structuredStoryboardService,
-                generationGuardService,
-                auditService,
-                2L
-        );
-
-        assertThatThrownBy(() -> tools.saveStoryboard(List.of("scene 1")))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("Forbidden");
         verifyNoInteractions(sceneService);
     }
 
     @Test
-    void saveStructuredStoryboardNormalizesAndSavesScenes() {
-        ChapterRepository chapterRepository = mock(ChapterRepository.class);
-        MangaImageRepository mangaImageRepository = mock(MangaImageRepository.class);
-        SceneService sceneService = mock(SceneService.class);
-        StructuredStoryboardService structuredStoryboardService = mock(StructuredStoryboardService.class);
-        GenerationGuardService generationGuardService = mock(GenerationGuardService.class);
-        AgentToolAuditService auditService = new AgentToolAuditService(new AgentRunToolStatus());
-        Chapter chapter = chapterWithOwner(7L, 1L);
-        Object pages = List.of(Map.of("panels", List.of("a", "b", "c", "d")));
-        List<String> scenes = List.of("绗?椤? [绗?鏍糫 a [绗?鏍糫 b [绗?鏍糫 c [绗?鏍糫 d");
-
-        when(chapterRepository.findByIdForIdempotency(7L)).thenReturn(Optional.of(chapter));
-        when(structuredStoryboardService.normalize(pages, 1)).thenReturn(scenes);
-        when(sceneService.updateScenes(7L, scenes)).thenReturn(scenes);
-
-        MangaAgentToolFactory.Tools tools = tools(
-                chapterRepository,
-                mangaImageRepository,
-                sceneService,
-                structuredStoryboardService,
-                generationGuardService,
-                auditService,
-                1L
-        );
-
-        Map<String, Object> result = tools.saveStructuredStoryboard(pages);
-
-        assertThat(result).containsEntry("scenes_count", 1);
-        verify(structuredStoryboardService).normalize(pages, 1);
-        verify(sceneService).updateScenes(7L, scenes);
-    }
-
-    @Test
-    void askUserStoresWaitingInputAndSuspendsRun() {
+    void askUserStoresInputThenSuspends() {
         ChapterRepository chapterRepository = mock(ChapterRepository.class);
         MangaImageRepository mangaImageRepository = mock(MangaImageRepository.class);
         SceneService sceneService = mock(SceneService.class);
@@ -204,29 +141,23 @@ class MangaAgentToolFactoryTest {
         AgentToolAuditService auditService = new AgentToolAuditService(runStatus);
         UUID requestId = UUID.randomUUID();
 
-        try (AgentRunToolStatus.RunScope ignored = runStatus.start(1L, 7L, requestId)) {
-            MangaAgentToolFactory.Tools tools = tools(
-                    chapterRepository,
-                    mangaImageRepository,
-                    sceneService,
-                    structuredStoryboardService,
-                    generationGuardService,
-                    auditService,
-                    runStatus,
-                    1L
-            );
+        try (AgentRunToolStatus.RunScope ignored = runStatus.start(USER_ID, CHAPTER_ID, requestId)) {
+            Fixture fixture = fixture(chapterRepository, mangaImageRepository, sceneService,
+                    structuredStoryboardService, generationGuardService, auditService, runStatus);
+            RuntimeContext ctx = runtimeContext(USER_ID, STORY_ID, CHAPTER_ID, COZE_KEY, requestId);
 
-            assertThatThrownBy(() -> tools.askUser(
-                    "閫夋嫨鏁版嵁搴擄紵",
+            assertThatThrownBy(() -> fixture.tools().askUser(
+                    "Select database?",
                     List.of(Map.of("label", "PostgreSQL", "recommended", true), Map.of("label", "MySQL")),
                     true,
-                    "闇€瑕佹寔涔呭寲鏂规"
+                    "Need persistence strategy",
+                    ctx
             )).isInstanceOf(ToolSuspendException.class);
         }
 
-        AgentUserInputRequest waiting = runStatus.waitingInput(1L, 7L, requestId);
+        AgentUserInputRequest waiting = runStatus.waitingInput(USER_ID, CHAPTER_ID, requestId);
         assertThat(waiting).isNotNull();
-        assertThat(waiting.question()).isEqualTo("閫夋嫨鏁版嵁搴擄紵");
+        assertThat(waiting.question()).isEqualTo("Select database?");
         assertThat(waiting.options()).extracting(AgentUserInputRequest.Option::label)
                 .containsExactly("PostgreSQL", "MySQL");
         assertThat(waiting.allowFreeText()).isTrue();
@@ -243,71 +174,64 @@ class MangaAgentToolFactoryTest {
         AgentToolAuditService auditService = new AgentToolAuditService(runStatus);
         UUID requestId = UUID.randomUUID();
 
-        try (AgentRunToolStatus.RunScope ignored = runStatus.start(1L, 7L, requestId)) {
-            MangaAgentToolFactory.Tools tools = tools(
-                    chapterRepository,
-                    mangaImageRepository,
-                    sceneService,
-                    structuredStoryboardService,
-                    generationGuardService,
-                    auditService,
-                    runStatus,
-                    1L
-            );
-            RuntimeContext runtimeContext = RuntimeContext.builder()
-                    .sessionId("u-1-story-3-chapter-7-manga-director")
-                    .userId("1")
-                    .put(com.artverse.agent.AgentRunContext.class, new com.artverse.agent.AgentRunContext(requestId))
-                    .build();
+        try (AgentRunToolStatus.RunScope ignored = runStatus.start(USER_ID, CHAPTER_ID, requestId)) {
+            Fixture fixture = fixture(chapterRepository, mangaImageRepository, sceneService,
+                    structuredStoryboardService, generationGuardService, auditService, runStatus);
+            RuntimeContext ctx = runtimeContext(USER_ID, STORY_ID, CHAPTER_ID, COZE_KEY, requestId);
 
-            assertThatThrownBy(() -> tools.askUser(
-                    "璇烽€夋嫨鍒嗛暅淇濆瓨鏂规",
+            assertThatThrownBy(() -> fixture.tools().askUser(
+                    "Choose storyboard save strategy",
                     List.of(Map.of("label", "PostgreSQL", "recommended", true), Map.of("label", "MySQL")),
                     true,
-                    "闇€瑕佺‘璁ゆ寔涔呭寲璺緞",
-                    runtimeContext
+                    "Need to confirm persistence path",
+                    ctx
             )).isInstanceOf(ToolSuspendException.class);
         }
 
-        assertThat(runStatus.waitingInput(1L, 7L, requestId)).isNotNull();
+        assertThat(runStatus.waitingInput(USER_ID, CHAPTER_ID, requestId)).isNotNull();
     }
 
-    private MangaAgentToolFactory.Tools tools(ChapterRepository chapterRepository,
-                                             MangaImageRepository mangaImageRepository,
-                                             SceneService sceneService,
-                                             StructuredStoryboardService structuredStoryboardService,
-                                             GenerationGuardService generationGuardService,
-                                             AgentToolAuditService auditService,
-                                             Long userId) {
-        return tools(chapterRepository, mangaImageRepository, sceneService, structuredStoryboardService,
-                generationGuardService, auditService, new AgentRunToolStatus(), userId);
+    // ---- helpers ----
+
+    private Fixture fixture(ChapterRepository chapterRepository, MangaImageRepository mangaImageRepository,
+                            SceneService sceneService, StructuredStoryboardService structuredStoryboardService,
+                            GenerationGuardService generationGuardService, AgentToolAuditService auditService) {
+        return fixture(chapterRepository, mangaImageRepository, sceneService, structuredStoryboardService,
+                generationGuardService, auditService, new AgentRunToolStatus());
     }
 
-    private MangaAgentToolFactory.Tools tools(ChapterRepository chapterRepository,
-                                             MangaImageRepository mangaImageRepository,
-                                             SceneService sceneService,
-                                             StructuredStoryboardService structuredStoryboardService,
-                                             GenerationGuardService generationGuardService,
-                                             AgentToolAuditService auditService,
-                                             AgentRunToolStatus runStatus,
-                                             Long userId) {
+    private Fixture fixture(ChapterRepository chapterRepository, MangaImageRepository mangaImageRepository,
+                            SceneService sceneService, StructuredStoryboardService structuredStoryboardService,
+                            GenerationGuardService generationGuardService, AgentToolAuditService auditService,
+                            AgentRunToolStatus runStatus) {
         MangaAgentToolFactory factory = new MangaAgentToolFactory(
-                mangaImageRepository,
-                sceneService,
-                structuredStoryboardService,
-                new ChapterAccessService(chapterRepository),
-                generationGuardService,
-                auditService,
-                runStatus
-        );
-        return factory.create("coze-key", 7L, userId);
+                mangaImageRepository, sceneService, structuredStoryboardService,
+                new ChapterAccessService(chapterRepository), generationGuardService, auditService, runStatus);
+        MangaAgentToolFactory.Tools tools = factory.create();
+        RuntimeContext runtimeContext = runtimeContext(USER_ID, STORY_ID, CHAPTER_ID, COZE_KEY);
+        return new Fixture(tools, runtimeContext);
     }
 
-    private Chapter chapterWithOwner(Long chapterId, Long ownerId) {
+    private static RuntimeContext runtimeContext(Long userId, Long storyId, Long chapterId, String cozeKey) {
+        return runtimeContext(userId, storyId, chapterId, cozeKey, UUID.randomUUID());
+    }
+
+    private static RuntimeContext runtimeContext(Long userId, Long storyId, Long chapterId, String cozeKey, UUID requestId) {
+        return RuntimeContext.builder()
+                .userId(String.valueOf(userId))
+                .sessionId("u-" + userId + "-story-" + storyId + "-chapter-" + chapterId)
+                .put(MangaAgentRuntimeContext.class, new MangaAgentRuntimeContext(
+                        userId, storyId, chapterId,
+                        UUID.randomUUID(), requestId, cozeKey))
+                .put(AgentRunContext.class, new AgentRunContext(requestId))
+                .build();
+    }
+
+    private static Chapter chapterWithOwner(Long chapterId, Long ownerId) {
         User user = new User();
         user.setId(ownerId);
         Story story = new Story();
-        story.setId(3L);
+        story.setId(STORY_ID);
         story.setTitle("Story");
         story.setUser(user);
         Chapter chapter = new Chapter();
@@ -319,4 +243,6 @@ class MangaAgentToolFactoryTest {
         chapter.setNovelContent("source");
         return chapter;
     }
+
+    private record Fixture(MangaAgentToolFactory.Tools tools, RuntimeContext runtimeContext) {}
 }

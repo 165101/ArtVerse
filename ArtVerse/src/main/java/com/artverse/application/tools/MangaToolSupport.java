@@ -9,6 +9,7 @@ import com.artverse.domain.Chapter;
 import io.agentscope.core.agent.RuntimeContext;
 import lombok.RequiredArgsConstructor;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -16,43 +17,33 @@ import java.util.Map;
 public class MangaToolSupport {
 
     private final AgentRunToolStatus agentRunToolStatus;
-    private final String legacyCozeApiKey;
-    private final Long legacyChapterId;
-    private final Long legacyUserId;
 
     public MangaAgentRuntimeContext resolveContext(RuntimeContext runtimeContext) {
-        MangaAgentRuntimeContext context = runtimeContext == null ? null : runtimeContext.get(MangaAgentRuntimeContext.class);
-        if (context != null) {
-            return context;
+        if (runtimeContext == null) {
+            throw new BusinessException(500, "RuntimeContext is required for tool execution");
         }
-        if (legacyUserId == null || legacyChapterId == null) {
-            throw new BusinessException(500, "Manga Agent runtime context is missing user id or chapter id");
+        MangaAgentRuntimeContext context = runtimeContext.get(MangaAgentRuntimeContext.class);
+        if (context == null) {
+            throw new BusinessException(500, "MangaAgentRuntimeContext is missing from RuntimeContext");
         }
-        return new MangaAgentRuntimeContext(
-                legacyUserId,
-                null,
-                legacyChapterId,
-                null,
-                null,
-                legacyCozeApiKey == null ? "" : legacyCozeApiKey
-        );
+        return context;
     }
 
     public void requestUserInput(Long userId, Long chapterId, RuntimeContext runtimeContext,
                                  AgentUserInputRequest request) {
-        AgentRunContext context = runtimeContext == null ? null : runtimeContext.get(AgentRunContext.class);
+        AgentRunContext context = runtimeContext.get(AgentRunContext.class);
         if (context != null && context.requestId() != null) {
             agentRunToolStatus.requestUserInput(userId, chapterId, context.requestId(), request);
-            return;
+        } else {
+            agentRunToolStatus.requestUserInputForActiveRun(userId, chapterId, request);
         }
-        agentRunToolStatus.requestUserInputForActiveRun(userId, chapterId, request);
     }
 
     public String chapterDisplayName(Chapter chapter) {
         if (chapter.getDisplayTitle() != null && !chapter.getDisplayTitle().isBlank()) {
             return chapter.getDisplayTitle();
         }
-        return "第" + chapter.getChapterNumber() + "话";
+        return "Chapter " + chapter.getChapterNumber();
     }
 
     public String excerpt(String text, int maxChars) {
@@ -71,7 +62,7 @@ public class MangaToolSupport {
         if (!(rawOptions instanceof List<?> list)) {
             return List.of();
         }
-        List<AgentUserInputRequest.Option> result = new java.util.ArrayList<>();
+        List<AgentUserInputRequest.Option> result = new ArrayList<>();
         for (int i = 0; i < list.size(); i++) {
             Object item = list.get(i);
             String id = String.valueOf((char) ('a' + Math.min(i, 25)));

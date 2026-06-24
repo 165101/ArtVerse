@@ -1,4 +1,4 @@
-import { EventType, HttpAgent, type AGUIEvent, type RunAgentInput } from '@ag-ui/client';
+﻿import { EventType, HttpAgent, type AGUIEvent, type RunAgentInput } from '@ag-ui/client';
 
 const BASE = '';
 export const DEEPSEEK_USAGE_URL = 'https://platform.deepseek.com/usage';
@@ -502,7 +502,14 @@ export async function importNovel(chapterId: number, content: string): Promise<C
 
 export async function generateScenes(chapterId: number, signal?: AbortSignal): Promise<string[]> {
   const res = await authFetch(`${BASE}/api/chapters/${chapterId}/generate-scenes`, { method: 'POST', signal });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const text = await res.text();
+    try {
+      const err = JSON.parse(text);
+      if (err.code === 4028) throw new Error('Coze余额不足，请等待配额刷新或升级付费版本');
+    } catch { /* not JSON, use raw text */ }
+    throw new Error(text);
+  }
   const data = await res.json();
   return data.scenes;
 }

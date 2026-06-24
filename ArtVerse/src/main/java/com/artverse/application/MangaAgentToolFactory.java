@@ -26,11 +26,7 @@ public class MangaAgentToolFactory {
     private final AgentRunToolStatus agentRunToolStatus;
 
     public Tools create() {
-        return create(null, null, null);
-    }
-
-    public Tools create(String cozeApiKey, Long chapterId, Long userId) {
-        MangaToolSupport support = new MangaToolSupport(agentRunToolStatus, cozeApiKey, chapterId, userId);
+        MangaToolSupport support = new MangaToolSupport(agentRunToolStatus);
         return new Tools(
                 new MangaContextTools(
                         mangaImageRepository,
@@ -56,7 +52,6 @@ public class MangaAgentToolFactory {
             MangaStoryboardTools storyboardTools,
             MangaHitlTools hitlTools
     ) {
-
         public List<Object> all() {
             return List.of(contextTools, storyboardTools, hitlTools);
         }
@@ -65,41 +60,21 @@ public class MangaAgentToolFactory {
             return contextTools.getChapterContext(runtimeContext);
         }
 
-        public Map<String, Object> getChapterContext() {
-            return contextTools.getChapterContext();
-        }
-
         public Map<String, Object> generateStoryboard(RuntimeContext runtimeContext) {
             return storyboardTools.generateStoryboard(runtimeContext);
-        }
-
-        public Map<String, Object> generateStoryboard() {
-            return storyboardTools.generateStoryboard();
         }
 
         public Map<String, Object> saveStoryboard(List<String> scenes, RuntimeContext runtimeContext) {
             return storyboardTools.saveStoryboard(scenes, runtimeContext);
         }
 
-        public Map<String, Object> saveStoryboard(List<String> scenes) {
-            return storyboardTools.saveStoryboard(scenes);
-        }
-
         public Map<String, Object> saveStructuredStoryboard(Object pages, RuntimeContext runtimeContext) {
             return storyboardTools.saveStructuredStoryboard(pages, runtimeContext);
-        }
-
-        public Map<String, Object> saveStructuredStoryboard(Object pages) {
-            return storyboardTools.saveStructuredStoryboard(pages);
         }
 
         public Map<String, Object> askUser(String question, Object options, Boolean allowFreeText, String reason,
                                            RuntimeContext runtimeContext) {
             return hitlTools.askUser(question, options, allowFreeText, reason, runtimeContext);
-        }
-
-        public Map<String, Object> askUser(String question, Object options, Boolean allowFreeText, String reason) {
-            return hitlTools.askUser(question, options, allowFreeText, reason);
         }
     }
 }

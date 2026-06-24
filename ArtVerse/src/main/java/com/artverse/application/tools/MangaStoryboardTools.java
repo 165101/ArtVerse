@@ -53,10 +53,6 @@ public class MangaStoryboardTools {
         });
     }
 
-    public Map<String, Object> generateStoryboard() {
-        return generateStoryboard(null);
-    }
-
     @Tool(
             name = "save_storyboard",
             description = "Save edited storyboard scenes to the chapter.",
@@ -78,10 +74,6 @@ public class MangaStoryboardTools {
                     "scenes", updated
             );
         });
-    }
-
-    public Map<String, Object> saveStoryboard(List<String> scenes) {
-        return saveStoryboard(scenes, null);
     }
 
     @Tool(
@@ -106,9 +98,5 @@ public class MangaStoryboardTools {
                     "scenes", updated
             );
         });
-    }
-
-    public Map<String, Object> saveStructuredStoryboard(Object pages) {
-        return saveStructuredStoryboard(pages, null);
     }
 }

@@ -1,9 +1,9 @@
 package com.artverse.application;
 
-import com.artverse.agent.AgentModelSpecFactory;
-import com.artverse.agent.gateway.AgentScopeEventMapper;
-import com.artverse.agent.AgentWorkspaceSyncService;
 import com.artverse.agent.AgentGateway;
+import com.artverse.agent.AgentModelSpecFactory;
+import com.artverse.agent.AgentWorkspaceSyncService;
+import com.artverse.agent.gateway.AgentScopeEventMapper;
 import com.artverse.application.workflow.MangaWorkflowOrchestrator;
 import com.artverse.common.BusinessException;
 import com.artverse.config.ArtVerseProperties;
@@ -92,28 +92,22 @@ public class MangaAgentService {
         }
     }
 
-    public SseEmitter runStream(Long chapterId, String message, UUID requestId, User user) {
-        MangaAgentConversation conversation = mangaAgentConversationRegistry.activeOrCreate(chapterId, user);
-        return runStreamInternal(conversation, message, requestId, MangaAgentRunEventPublisher.StreamProtocol.LEGACY_AND_AG_UI);
-    }
-
     public SseEmitter runAgUiStream(Long chapterId, String message, UUID requestId, User user) {
         MangaAgentConversation conversation = mangaAgentConversationRegistry.activeOrCreate(chapterId, user);
-        return runStreamInternal(conversation, message, requestId, MangaAgentRunEventPublisher.StreamProtocol.AG_UI_ONLY);
+        return runStreamInternal(conversation, message, requestId);
     }
 
     public SseEmitter runAgUiStream(Long chapterId, UUID conversationId, String message, UUID requestId, User user) {
         MangaAgentConversation conversation = mangaAgentConversationRegistry.require(chapterId, user, conversationId);
-        return runStreamInternal(conversation, message, requestId, MangaAgentRunEventPublisher.StreamProtocol.AG_UI_ONLY);
+        return runStreamInternal(conversation, message, requestId);
     }
 
-    private SseEmitter runStreamInternal(MangaAgentConversation conversation, String message, UUID requestId,
-                                         MangaAgentRunEventPublisher.StreamProtocol protocol) {
+    private SseEmitter runStreamInternal(MangaAgentConversation conversation, String message, UUID requestId) {
         UUID effectiveRequestId = requestId == null ? UUID.randomUUID() : requestId;
         User user = conversation.getUser();
         Long chapterId = conversation.getChapter().getId();
         SseEmitter emitter = new SseEmitter(0L);
-        MangaAgentRunEventPublisher.RunEventSink sink = sinkFor(emitter, protocol);
+        MangaAgentRunEventPublisher.RunEventSink sink = mangaAgentRunEventPublisher.newSink(emitter);
         AtomicReference<MangaAgentRun> runRef = new AtomicReference<>();
 
         executor.submit(() -> {
@@ -137,43 +131,31 @@ public class MangaAgentService {
                     mangaAgentRunService.markFailed(conversation, effectiveRequestId, detail);
                 }
                 sink.sendError(run, effectiveRequestId, detail);
+            } finally {
+                sink.complete();
             }
         });
 
         return emitter;
     }
 
-    public SseEmitter resumeStream(Long chapterId, UUID requestId, String answer, User user) {
-        MangaAgentConversation conversation = mangaAgentConversationRegistry.activeOrCreate(chapterId, user);
-        return resumeStreamInternal(conversation, requestId, answer, MangaAgentRunEventPublisher.StreamProtocol.LEGACY_AND_AG_UI);
-    }
-
     public SseEmitter resumeAgUiStream(Long chapterId, UUID requestId, String answer, User user) {
         MangaAgentConversation conversation = mangaAgentConversationRegistry.activeOrCreate(chapterId, user);
-        return resumeStreamInternal(conversation, requestId, answer, MangaAgentRunEventPublisher.StreamProtocol.AG_UI_ONLY);
+        return resumeStreamInternal(conversation, requestId, answer);
     }
 
     public SseEmitter resumeAgUiStream(Long chapterId, UUID conversationId, UUID requestId, String answer, User user) {
         MangaAgentConversation conversation = mangaAgentConversationRegistry.require(chapterId, user, conversationId);
-        return resumeStreamInternal(conversation, requestId, answer, MangaAgentRunEventPublisher.StreamProtocol.AG_UI_ONLY);
+        return resumeStreamInternal(conversation, requestId, answer);
     }
 
-    private SseEmitter resumeStreamInternal(MangaAgentConversation conversation, UUID requestId, String answer,
-                                            MangaAgentRunEventPublisher.StreamProtocol protocol) {
-        if (requestId == null) {
-            throw new BusinessException(400, "requestId is required");
-        }
+    private SseEmitter resumeStreamInternal(MangaAgentConversation conversation, UUID requestId, String answer) {
         User user = conversation.getUser();
         Long chapterId = conversation.getChapter().getId();
-        MangaAgentRun waitingRun = mangaAgentRunService.requireWaitingRun(conversation, requestId);
-        AgentUserInputRequest waiting = mangaAgentRunService.waitingInput(waitingRun);
-        String message = mangaAgentConversationService.resumeMessage(waitingRun.getInputMessage(), waiting, answer);
-        agentRunToolStatus.clearWaitingInput(user.getId(), chapterId, requestId);
-        mangaAgentRunService.markRunning(conversation, requestId);
-
         SseEmitter emitter = new SseEmitter(0L);
-        MangaAgentRunEventPublisher.RunEventSink sink = sinkFor(emitter, protocol);
-        AtomicReference<MangaAgentRun> runRef = new AtomicReference<>(waitingRun);
+        MangaAgentRunEventPublisher.RunEventSink sink = mangaAgentRunEventPublisher.newSink(emitter);
+        AtomicReference<MangaAgentRun> runRef = new AtomicReference<>();
+
         executor.submit(() -> {
             try (AgentRunToolStatus.RunScope ignored = agentRunToolStatus.start(
                     user.getId(),
@@ -181,8 +163,7 @@ public class MangaAgentService {
                     requestId,
                     event -> sink.sendToolEvent(runRef.get(), event)
             )) {
-                sink.sendUserAnswerEvent(waitingRun, requestId, answer);
-                mangaWorkflowOrchestrator.runStreamLeader(conversation, message, requestId, ignored.state(), sink, runRef);
+                mangaWorkflowOrchestrator.runStreamLeader(conversation, resumeMessage(conversation, requestId, answer), requestId, ignored.state(), sink, runRef);
             } catch (AgentUserInputRequiredException e) {
                 MangaAgentRun run = runRef.get();
                 if (run != null) {
@@ -196,8 +177,11 @@ public class MangaAgentService {
                     mangaAgentRunService.markFailed(conversation, requestId, detail);
                 }
                 sink.sendError(run, requestId, detail);
+            } finally {
+                sink.complete();
             }
         });
+
         return emitter;
     }
 
@@ -207,18 +191,20 @@ public class MangaAgentService {
     }
 
     public RunResult resume(MangaAgentConversation conversation, UUID requestId, String answer) {
-        if (requestId == null) {
-            throw new BusinessException(400, "requestId is required");
+        MangaAgentRunService.RunSnapshot snapshot = mangaAgentRunService.snapshot(
+                mangaAgentRunService.findRun(conversation, requestId)
+                        .orElseThrow(() -> new BusinessException(404, "Agent run not found"))
+        );
+        if (snapshot.status() != com.artverse.domain.MangaAgentRunStatus.WAITING_USER) {
+            throw new BusinessException(409, "Can only resume a paused run");
         }
-        User user = conversation.getUser();
-        Long chapterId = conversation.getChapter().getId();
-        MangaAgentRun waitingRun = mangaAgentRunService.requireWaitingRun(conversation, requestId);
-        AgentUserInputRequest waiting = mangaAgentRunService.waitingInput(waitingRun);
-        agentRunToolStatus.clearWaitingInput(user.getId(), chapterId, requestId);
-        mangaAgentRunService.markRunning(conversation, requestId);
-        String message = mangaAgentConversationService.resumeMessage(waitingRun.getInputMessage(), waiting, answer);
+        AgentUserInputRequest waiting = snapshot.userInputRequest();
+        if (waiting == null) {
+            throw new BusinessException(409, "No waiting user input request on the run");
+        }
+        String message = mangaAgentConversationService.resumeMessage("Continue", waiting, answer);
         try {
-            RunResult result = run(conversation, message, requestId, user);
+            RunResult result = run(conversation, message, requestId, conversation.getUser());
             mangaAgentRunService.markSucceeded(conversation, requestId, result.reply());
             return result;
         } catch (AgentUserInputRequiredException e) {
@@ -292,19 +278,24 @@ public class MangaAgentService {
         return mangaAgentRunService.snapshot(run);
     }
 
+        private String resumeMessage(MangaAgentConversation conversation, UUID requestId, String answer) {
+        MangaAgentRunService.RunSnapshot snapshot = mangaAgentRunService.snapshot(
+                mangaAgentRunService.findRun(conversation, requestId)
+                        .orElseThrow(() -> new BusinessException(404, "Agent run not found"))
+        );
+        AgentUserInputRequest waiting = snapshot.userInputRequest();
+        if (waiting == null) {
+            throw new BusinessException(409, "No waiting user input request on the run");
+        }
+        return mangaAgentConversationService.resumeMessage("Continue", waiting, answer);
+    }
+
     private void interruptStaleRunningRuns() {
         int staleSeconds = Math.max(
                 properties.getAgent().getStaleRunningSeconds(),
                 properties.getAgent().getRunTimeoutSeconds() * 2
         );
         mangaAgentRunService.interruptStaleRunningRuns(OffsetDateTime.now().minusSeconds(staleSeconds));
-    }
-
-    private MangaAgentRunEventPublisher.RunEventSink sinkFor(SseEmitter emitter,
-                                                             MangaAgentRunEventPublisher.StreamProtocol protocol) {
-        return protocol == MangaAgentRunEventPublisher.StreamProtocol.AG_UI_ONLY
-                ? mangaAgentRunEventPublisher.agUiOnly(emitter)
-                : mangaAgentRunEventPublisher.legacyAndAgUi(emitter);
     }
 
     public record RunResult(String reply, UUID requestId) {

@@ -59,8 +59,4 @@ public class MangaContextTools {
             return result;
         });
     }
-
-    public Map<String, Object> getChapterContext() {
-        return getChapterContext(null);
-    }
 }
