@@ -23,6 +23,8 @@ import com.artverse.domain.Chapter;
 import com.artverse.domain.MangaAgentMessage;
 import com.artverse.domain.MessageRole;
 import com.artverse.domain.User;
+import io.agentscope.core.message.GenerateReason;
+import io.agentscope.core.message.Msg;
 import io.agentscope.core.tool.ToolSuspendException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -56,8 +58,9 @@ public class MangaDirectorAgentNode implements MangaWorkflowNodeHandler {
         syncWorkspace(context);
         AgentRunRequest request = buildRunRequest(context, messages);
         try {
-            String reply = harnessAgentGateway.generateText(request).block(agentRunTimeout());
-            throwIfWaitingForUser(context);
+            Msg result = harnessAgentGateway.generate(request).block(agentRunTimeout());
+            throwIfWaitingForUser(context, result);
+            String reply = result == null ? null : result.getTextContent();
             if (reply == null || reply.isBlank()) {
                 throw new BusinessException(502, "Agent returned empty response");
             }
@@ -71,7 +74,7 @@ public class MangaDirectorAgentNode implements MangaWorkflowNodeHandler {
         } catch (AgentUserInputRequiredException e) {
             throw e;
         } catch (ToolSuspendException e) {
-            throwIfWaitingForUser(context);
+            throwIfWaitingForUser(context, null);
             throw new BusinessException(502, "Agent tool suspended without user input");
         } catch (BusinessException e) {
             if (context.toolState().hasSuccessfulMutatingTool()) {
@@ -112,25 +115,28 @@ public class MangaDirectorAgentNode implements MangaWorkflowNodeHandler {
         AtomicBoolean finished = new AtomicBoolean(false);
         try {
             harnessAgentGateway.streamEvents(request)
-                    .doOnNext(event -> agentScopeEventMapper.map(event).ifPresent(mapped -> {
-                        if (mangaAgentRunService.isTerminal(
-                                context.requestId(), context.user().getId(), context.chapter().getId())) {
-                            throw new AgentRunTerminatedException();
-                        }
-                        if ("text_delta".equals(mapped.type()) && mapped.text() != null) {
-                            reply.append(mapped.text());
-                        }
-                        streamContext.sink().sendRunEvent(streamContext.run(), mapped);
-                    }))
+                    .doOnNext(event -> {
+                        captureWaitingState(context, event);
+                        agentScopeEventMapper.map(event).ifPresent(mapped -> {
+                            if (mangaAgentRunService.isTerminal(
+                                    context.requestId(), context.user().getId(), context.chapter().getId())) {
+                                throw new AgentRunTerminatedException();
+                            }
+                            if ("text_delta".equals(mapped.type()) && mapped.text() != null) {
+                                reply.append(mapped.text());
+                            }
+                            streamContext.sink().sendRunEvent(streamContext.run(), mapped);
+                        });
+                    })
                     .blockLast(agentRunTimeout());
             finished.set(true);
-            throwIfWaitingForUser(context);
+            throwIfWaitingForUser(context, null);
         } catch (AgentRunTerminatedException e) {
             return Map.of("reply", "");
         } catch (AgentUserInputRequiredException e) {
             throw e;
         } catch (ToolSuspendException e) {
-            throwIfWaitingForUser(context);
+            throwIfWaitingForUser(context, null);
             throw new BusinessException(502, "Agent tool suspended without user input");
         } catch (Exception e) {
             if (mangaAgentRunService.isTerminal(context.requestId(), context.user().getId(), context.chapter().getId())) {
@@ -200,7 +206,16 @@ public class MangaDirectorAgentNode implements MangaWorkflowNodeHandler {
                 context.modelSpec(),
                 context.deepseekApiKey(),
                 context.requestId(),
-                context.conversation().getConversationUuid()
+                context.conversation().getConversationUuid(),
+                harnessToolGroups()
+        );
+    }
+
+    private java.util.List<String> harnessToolGroups() {
+        return java.util.List.of(
+                com.artverse.agents.MangaAgentToolkitFactory.CONTEXT_TOOLS,
+                com.artverse.agents.MangaAgentToolkitFactory.STORYBOARD_TOOLS,
+                com.artverse.agents.MangaAgentToolkitFactory.HITL_TOOLS
         );
     }
 
@@ -211,7 +226,16 @@ public class MangaDirectorAgentNode implements MangaWorkflowNodeHandler {
         );
     }
 
-    private void throwIfWaitingForUser(MangaWorkflowExecutionContext context) {
+    private void captureWaitingState(MangaWorkflowExecutionContext context, io.agentscope.core.event.AgentEvent event) {
+        if (event instanceof io.agentscope.core.event.AgentResultEvent resultEvent) {
+            throwIfWaitingForUser(context, resultEvent.getResult());
+        }
+    }
+
+    private void throwIfWaitingForUser(MangaWorkflowExecutionContext context, Msg result) {
+        if (result != null && result.getGenerateReason() != GenerateReason.TOOL_SUSPENDED) {
+            return;
+        }
         AgentUserInputRequest waiting = context.toolState().userInputRequest();
         if (waiting != null) {
             throw new AgentUserInputRequiredException(waiting);

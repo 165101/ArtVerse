@@ -47,10 +47,9 @@ public class AgentScopeAgentFactory {
                 .enablePendingToolRecovery(true)
                 .disableShellTool()
                 .disableFilesystemTools()
-                .hook(new AgentScopeHitlSuspendHook())
                 .build();
         if (request.taskType() == AgentTaskType.MANGA_DIRECTOR) {
-            toolkitFactory.configureMangaDirector(agent.getToolkit());
+            toolkitFactory.configureMangaDirector(agent.getToolkit(), toolkitFactory.activeGroupsForDirector());
         }
         return agent;
     }

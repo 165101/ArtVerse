@@ -443,6 +443,20 @@ export default function MangaAgentPage() {
       if (agEvent.type === 'RUN_STARTED') {
         setRunStatus('智能体已启动');
       }
+      if (agEvent.type === 'RUN_FINISHED' && agEvent.outcome?.type === 'interrupt') {
+        const interrupt = agEvent.outcome.interrupts?.[0];
+        const metadata = interrupt?.metadata;
+        const request = {
+          requestId: agEvent.runId || activeRequestIdRef.current || undefined,
+          question: String(metadata?.question || interrupt?.message || '需要你做出选择'),
+          options: Array.isArray(metadata?.options) ? metadata.options : [],
+          allowFreeText: Boolean(metadata?.allowFreeText),
+          reason: interrupt?.reason || '',
+        };
+        setUserInputRequest(request);
+        setRunStatus(request.question);
+        return null;
+      }
       if (agEvent.type === 'STEP_STARTED') {
         setRunStatus(String((agEvent as any).stepName || '模型推理中'));
       }

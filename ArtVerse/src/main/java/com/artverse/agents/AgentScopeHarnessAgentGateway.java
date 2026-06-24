@@ -22,12 +22,15 @@ public class AgentScopeHarnessAgentGateway implements HarnessAgentGateway {
 
     private final AgentScopeAgentFactory agentFactory;
     private final AgentScopeRuntimeContextFactory runtimeContextFactory;
+    private final MangaAgentToolkitFactory toolkitFactory;
 
     public AgentScopeHarnessAgentGateway(
             AgentScopeAgentFactory agentFactory,
-            AgentScopeRuntimeContextFactory runtimeContextFactory) {
+            AgentScopeRuntimeContextFactory runtimeContextFactory,
+            MangaAgentToolkitFactory toolkitFactory) {
         this.agentFactory = agentFactory;
         this.runtimeContextFactory = runtimeContextFactory;
+        this.toolkitFactory = toolkitFactory;
     }
 
     @Override
@@ -41,6 +44,7 @@ public class AgentScopeHarnessAgentGateway implements HarnessAgentGateway {
     @Override
     public Flux<AgentEvent> streamEvents(AgentRunRequest request) {
         HarnessAgent agent = agentFactory.getOrCreate(request);
+        configureToolkitForRequest(agent, request);
         RuntimeContext ctx = runtimeContextFactory.create(request);
         List<Msg> messages = convertMessages(prepareInputMessages(request));
 
@@ -48,13 +52,13 @@ public class AgentScopeHarnessAgentGateway implements HarnessAgentGateway {
     }
 
     @Override
-    public Mono<String> generateText(AgentRunRequest request) {
+    public Mono<Msg> generate(AgentRunRequest request) {
         HarnessAgent agent = agentFactory.getOrCreate(request);
+        configureToolkitForRequest(agent, request);
         RuntimeContext ctx = runtimeContextFactory.create(request);
         List<Msg> messages = convertMessages(prepareInputMessages(request));
 
-        return agent.call(messages, ctx)
-                .map(Msg::getTextContent);
+        return agent.call(messages, ctx);
     }
 
     static Long parseUserIdForTool(String userId) {
@@ -76,6 +80,13 @@ public class AgentScopeHarnessAgentGateway implements HarnessAgentGateway {
 
     static RuntimeContext buildRuntimeContextForTest(AgentRunRequest request, AgentSessionIdFactory factory) {
         return new AgentScopeRuntimeContextFactory(factory).create(request);
+    }
+
+    private void configureToolkitForRequest(HarnessAgent agent, AgentRunRequest request) {
+        if (request.taskType() != AgentTaskType.MANGA_DIRECTOR) {
+            return;
+        }
+        toolkitFactory.activateForRequest(agent.getToolkit(), request.activeToolGroups());
     }
 
     static List<AgentMessage> prepareInputMessages(AgentRunRequest request) {

@@ -221,7 +221,8 @@ class MangaAgentToolFactoryTest {
                     List.of(Map.of("label", "PostgreSQL", "recommended", true), Map.of("label", "MySQL")),
                     true,
                     "需要持久化方案"
-            )).isInstanceOf(ToolSuspendException.class);
+            )).isInstanceOf(ToolSuspendException.class)
+                    .hasMessage("Waiting for user input");
         }
 
         AgentUserInputRequest waiting = runStatus.waitingInput(1L, 7L, requestId);
@@ -266,7 +267,8 @@ class MangaAgentToolFactoryTest {
                     true,
                     "需要确认持久化路径",
                     runtimeContext
-            )).isInstanceOf(ToolSuspendException.class);
+            )).isInstanceOf(ToolSuspendException.class)
+                    .hasMessage("Waiting for user input");
         }
 
         assertThat(runStatus.waitingInput(1L, 7L, requestId)).isNotNull();

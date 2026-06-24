@@ -42,11 +42,11 @@ The controller resolves the current user and delegates to `MangaAgentService`. S
 
 For a new run, `MangaAgentService` resolves the active `MangaAgentConversation` unless a conversation id is supplied, opens the per-run tool tracking scope, and delegates workflow execution to `MangaWorkflowOrchestrator`. The orchestrator validates the message, builds a workflow context snapshot, checks idempotency through `GenerationGuardService.executeMangaAgentRun`, and dispatches to a `MangaWorkflowNodeHandler` through `MangaWorkflowNodeRegistry`.
 
-`MangaDirectorAgentNode` is the first concrete node. It saves the user message, builds agent messages from the selected conversation history, syncs chapter knowledge to the AgentScope workspace, builds an `AgentRunRequest`, invokes AgentScope through the gateway, maps streamed events, and saves the final assistant or degraded reply. Non-Director routes currently fall back to the Director handler until dedicated Storyboard, Review, HITL, and generation nodes are added.
+`MangaDirectorAgentNode` is the main AgentScope execution node. It saves the user message, builds agent messages from the selected conversation history, syncs chapter knowledge to the AgentScope workspace, builds an `AgentRunRequest`, invokes AgentScope through the gateway, maps streamed events, and saves the final assistant or degraded reply. `MangaReviewNode` and `MangaHitlNode` are explicit non-AgentScope workflow nodes for review-oriented and decision-oriented requests, so routes no longer fall back to Director implicitly.
 
 For resume, the service requires an existing `WAITING_USER` run, reconstructs a continuation message from the stored user-input request and the user's answer, clears waiting state, and continues the same request id.
 
-`AgentScopeAgentFactory` creates or reuses a per-user/story/chapter/conversation/task/model/workspace agent. `AgentScopeRuntimeContextFactory` passes per-call business values through AgentScope v2 `RuntimeContext` as `MangaAgentRuntimeContext`. For `AgentTaskType.MANGA_DIRECTOR`, `MangaAgentToolkitFactory` registers the Manga tools into AgentScope tool groups.
+`AgentScopeAgentFactory` creates or reuses a per-user/story/chapter/conversation/task/model/workspace agent. `AgentScopeRuntimeContextFactory` passes per-call business values through AgentScope v2 `RuntimeContext` as `MangaAgentRuntimeContext`. For `AgentTaskType.MANGA_DIRECTOR`, `MangaAgentToolkitFactory` registers the Manga tools into AgentScope tool groups, and `AgentScopeHarnessAgentGateway` re-applies the request-scoped active groups before each call so cached agents do not leak tool scope across workflow nodes.
 
 The frontend consumes AG-UI as the default live protocol. `POST /conversations/{conversationId}/ag-ui/run` and `POST /conversations/{conversationId}/ag-ui/runs/{requestId}/resume` are the preferred endpoints. Legacy chapter-level endpoints auto-resolve the active conversation and remain compatibility paths. Keep the execution panel as the single place that explains what the agent is doing; do not add a second competing progress widget.
 
@@ -59,12 +59,13 @@ Manga Director tools are grouped through AgentScope `Toolkit`:
 - `context-tools`: read-only chapter/story/storyboard/image context.
 - `storyboard-tools`: storyboard generation and storyboard persistence.
 - `hitl-tools`: user question/confirmation flow.
+- Active groups are request-scoped. The current Director node enables `context-tools`, `storyboard-tools`, and `hitl-tools`; future Agent nodes should declare their own narrower group set instead of inheriting a global default.
 
 - `get_chapter_context`: read-only; returns story, chapter, source excerpt, storyboard scenes, and generated image status.
 - `generate_storyboard`: mutating; generates scenes through `SceneService.generateScenes` and saves them through the existing scene flow.
 - `save_storyboard`: mutating; saves a complete list of storyboard scenes.
 - `save_structured_storyboard`: mutating; normalizes page/panel objects through `StructuredStoryboardService` before saving scenes. Prefer this for creating or rewriting storyboard pages.
-- `ask_user`: read-only at the tool level but pauses the run by storing `AgentUserInputRequest` and throwing `ToolSuspendException`.
+- `ask_user`: read-only at the tool level; stores `AgentUserInputRequest`, suspends the AgentScope run with `ToolSuspendException`, and lets the workflow detect `GenerateReason.TOOL_SUSPENDED` through the v2 native result.
 
 After a mutating tool succeeds, failures in the final agent response may degrade rather than fail the whole user action. Preserve this behavior unless deliberately changing recovery semantics.
 
@@ -79,7 +80,7 @@ After a mutating tool succeeds, failures in the final agent response may degrade
 - Chapter source text lives in `chapters.novel_content`; chat-derived fallback comes from `Chapter.novelContentOrJoinedMessages()`. `AgentWorkspaceSyncService` writes this into the story workspace `KNOWLEDGE.md` before a Manga Director run.
 - Manga Director must not use AgentScope shell/filesystem tools to find business content. `AgentScopeHarnessAgentGateway` disables Harness shell/filesystem tools for this business agent; chapter/story facts must come from `get_chapter_context`, synced `KNOWLEDGE.md`, and registered ArtVerse tools.
 - Manga Director tools should read user, chapter, conversation, request id, and Coze key from `MangaAgentRuntimeContext` injected through `RuntimeContext`. Avoid adding new factory-captured per-run fields.
-- When backend emits AG-UI frames, `MangaAgentPage.tsx` must translate `ag_ui_event` frames into execution panel state and synchronize final persisted messages after `RUN_FINISHED`; otherwise the frontend can appear stuck or require a manual refresh.
+- When backend emits AG-UI frames, `MangaAgentPage.tsx` must translate `ag_ui_event` frames into execution panel state, including `RUN_FINISHED` interrupts for waiting-user transitions, and synchronize final persisted messages after terminal completion; otherwise the frontend can appear stuck or require a manual refresh.
 - Use `ask_user` for blocking decisions instead of plain-text questions.
 - Keep controllers thin. Put public entrypoint behavior in `MangaAgentService` and workflow execution behavior in `MangaWorkflowOrchestrator`.
 - Keep AgentScope execution inside workflow nodes. `MangaWorkflowOrchestrator` should own routing, guard/run lifecycle, and workflow-level status events, not direct AgentScope request construction.

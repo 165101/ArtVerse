@@ -33,12 +33,14 @@ class MangaAgentToolkitFactoryTest {
         MangaAgentToolkitFactory toolkitFactory = new MangaAgentToolkitFactory(toolFactory);
         Toolkit toolkit = new Toolkit();
 
-        toolkitFactory.configureMangaDirector(toolkit);
+        toolkitFactory.configureMangaDirector(toolkit, List.of(
+                MangaAgentToolkitFactory.CONTEXT_TOOLS,
+                MangaAgentToolkitFactory.STORYBOARD_TOOLS
+        ));
 
         assertThat(toolkit.getActiveGroups()).containsExactlyInAnyOrder(
                 MangaAgentToolkitFactory.CONTEXT_TOOLS,
-                MangaAgentToolkitFactory.STORYBOARD_TOOLS,
-                MangaAgentToolkitFactory.HITL_TOOLS
+                MangaAgentToolkitFactory.STORYBOARD_TOOLS
         );
         assertThat(toolkit.getToolGroup(MangaAgentToolkitFactory.CONTEXT_TOOLS).getTools())
                 .contains("get_chapter_context");

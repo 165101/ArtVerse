@@ -1,6 +1,7 @@
 package com.artverse.agents;
 
 import com.artverse.common.BusinessException;
+import io.agentscope.core.tool.Toolkit;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -134,7 +135,8 @@ class AgentScopeHarnessAgentGatewayTest {
                 new AgentModelSpec("deepseek", "https://api.deepseek.com", "deepseek-chat", "key-a"),
                 "secret",
                 requestId,
-                null
+                null,
+                List.of()
         );
 
         AgentRunContext context = AgentScopeHarnessAgentGateway
@@ -159,7 +161,12 @@ class AgentScopeHarnessAgentGatewayTest {
                 new AgentModelSpec("deepseek", "https://api.deepseek.com", "deepseek-chat", "key-a"),
                 "secret",
                 requestId,
-                conversationId
+                conversationId,
+                List.of(
+                        MangaAgentToolkitFactory.CONTEXT_TOOLS,
+                        MangaAgentToolkitFactory.STORYBOARD_TOOLS,
+                        MangaAgentToolkitFactory.HITL_TOOLS
+                )
         );
 
         MangaAgentRuntimeContext context = AgentScopeHarnessAgentGateway
@@ -198,6 +205,50 @@ class AgentScopeHarnessAgentGatewayTest {
         assertThatThrownBy(() -> AgentScopeHarnessAgentGateway.parseUserIdForTool("user-42"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Invalid agent user id");
+    }
+
+    @Test
+    void requestCarriesDirectorToolGroups() {
+        AgentRunRequest request = new AgentRunRequest(
+                "42",
+                1L,
+                2L,
+                AgentTaskType.MANGA_DIRECTOR,
+                List.of(new AgentMessage("user", "hi")),
+                Map.of(),
+                new AgentModelSpec("deepseek", "https://api.deepseek.com", "deepseek-chat", "key-a"),
+                "secret",
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                List.of(
+                        MangaAgentToolkitFactory.CONTEXT_TOOLS,
+                        MangaAgentToolkitFactory.STORYBOARD_TOOLS
+                )
+        );
+
+        assertThat(request.activeToolGroups()).containsExactly(
+                MangaAgentToolkitFactory.CONTEXT_TOOLS,
+                MangaAgentToolkitFactory.STORYBOARD_TOOLS
+        );
+    }
+
+    @Test
+    void toolkitFactoryCanReactivateGroupsPerRequest() {
+        Toolkit toolkit = new Toolkit();
+        MangaAgentToolkitFactory toolkitFactory = new MangaAgentToolkitFactory(null);
+        toolkit.createToolGroup(MangaAgentToolkitFactory.CONTEXT_TOOLS, "context", true);
+        toolkit.createToolGroup(MangaAgentToolkitFactory.STORYBOARD_TOOLS, "storyboard", true);
+        toolkit.createToolGroup(MangaAgentToolkitFactory.HITL_TOOLS, "hitl", true);
+
+        toolkitFactory.activateForRequest(toolkit, List.of(
+                MangaAgentToolkitFactory.CONTEXT_TOOLS,
+                MangaAgentToolkitFactory.HITL_TOOLS
+        ));
+
+        assertThat(toolkit.getActiveGroups()).containsExactlyInAnyOrder(
+                MangaAgentToolkitFactory.CONTEXT_TOOLS,
+                MangaAgentToolkitFactory.HITL_TOOLS
+        );
     }
 
     private static AgentRunRequest requestWithSpec(String userId, AgentModelSpec spec) {

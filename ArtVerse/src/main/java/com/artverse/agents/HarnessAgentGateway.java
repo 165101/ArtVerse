@@ -3,6 +3,7 @@ package com.artverse.agents;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import io.agentscope.core.event.AgentEvent;
+import io.agentscope.core.message.Msg;
 
 public interface HarnessAgentGateway {
 
@@ -10,5 +11,5 @@ public interface HarnessAgentGateway {
 
     Flux<AgentEvent> streamEvents(AgentRunRequest request);
 
-    Mono<String> generateText(AgentRunRequest request);
+    Mono<Msg> generate(AgentRunRequest request);
 }

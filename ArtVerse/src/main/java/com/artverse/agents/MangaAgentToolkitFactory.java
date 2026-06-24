@@ -17,14 +17,29 @@ public class MangaAgentToolkitFactory {
 
     private final MangaAgentToolFactory mangaAgentToolFactory;
 
-    public void configureMangaDirector(Toolkit toolkit) {
+    public void configureMangaDirector(Toolkit toolkit, List<String> activeGroups) {
         MangaAgentToolFactory.Tools tools = mangaAgentToolFactory.create();
         createGroups(toolkit);
         toolkit.registration().tool(tools.contextTools()).group(CONTEXT_TOOLS).apply();
         toolkit.registration().tool(tools.storyboardTools()).group(STORYBOARD_TOOLS).apply();
         toolkit.registration().tool(tools.hitlTools()).group(HITL_TOOLS).apply();
-        toolkit.setActiveGroups(List.of(CONTEXT_TOOLS, STORYBOARD_TOOLS, HITL_TOOLS));
+        toolkit.setActiveGroups(normalizeActiveGroups(activeGroups));
         toolkit.registerMetaTool();
+    }
+
+    public List<String> activeGroupsForDirector() {
+        return List.of(CONTEXT_TOOLS, STORYBOARD_TOOLS, HITL_TOOLS);
+    }
+
+    public void activateForRequest(Toolkit toolkit, List<String> activeGroups) {
+        if (toolkit == null) {
+            return;
+        }
+        toolkit.setActiveGroups(normalizeActiveGroups(activeGroups));
+    }
+
+    private List<String> normalizeActiveGroups(List<String> activeGroups) {
+        return (activeGroups == null || activeGroups.isEmpty()) ? activeGroupsForDirector() : List.copyOf(activeGroups);
     }
 
     private void createGroups(Toolkit toolkit) {
