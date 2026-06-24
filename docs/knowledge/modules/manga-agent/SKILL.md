@@ -26,13 +26,13 @@ Image generation is not performed by the Manga Agent. The agent prepares or refi
 - Run state and event snapshots: `ArtVerse/src/main/java/com/artverse/application/MangaAgentRunService.java`.
 - SSE publishing and event persistence: `ArtVerse/src/main/java/com/artverse/application/MangaAgentRunEventPublisher.java`.
 - AG-UI protocol event mapping: `ArtVerse/src/main/java/com/artverse/application/AgUiEventFactory.java`.
-- AgentScope bridge: `ArtVerse/src/main/java/com/artverse/agent/gateway/AgentScopeHarnessAgentGateway.java`.
-- AgentScope construction/runtime/toolkit factories: `ArtVerse/src/main/java/com/artverse/agent/gateway/AgentScopeAgentFactory.java`, `ArtVerse/src/main/java/com/artverse/agent/gateway/AgentScopeRuntimeContextFactory.java`, `ArtVerse/src/main/java/com/artverse/agent/MangaAgentPromptProvider.java`, `ArtVerse/src/main/java/com/artverse/agent/gateway/MangaAgentToolkitFactory.java`.
+- AgentScope bridge (AgentGateway interface removed, inject directly): `ArtVerse/src/main/java/com/artverse/agent/gateway/AgentScopeHarnessAgentGateway.java`.
+- AgentScope construction/runtime/toolkit factories: `ArtVerse/src/main/java/com/artverse/agent/gateway/AgentScopeAgentFactory.java`, `ArtVerse/src/main/java/com/artverse/agent/gateway/AgentScopeRuntimeContextFactory.java` (absorbed AgentSessionIdFactory), `ArtVerse/src/main/java/com/artverse/agent/MangaAgentPromptProvider.java`, `ArtVerse/src/main/java/com/artverse/agent/gateway/MangaAgentToolkitFactory.java`.
 - Story knowledge sync: `ArtVerse/src/main/java/com/artverse/agent/AgentWorkspaceSyncService.java`.
 - Runtime workspace files: `ArtVerse/src/main/java/com/artverse/agent/AgentWorkspaceService.java`.
 - Agent tools and typed runtime context: `ArtVerse/src/main/java/com/artverse/agent/gateway/MangaAgentToolkitFactory.java`, `ArtVerse/src/main/java/com/artverse/application/tools/`, `ArtVerse/src/main/java/com/artverse/agent/MangaAgentRuntimeContext.java`.
 - AgentScope HITL suspend middleware (replaces deprecated Hook): ArtVerse/src/main/java/com/artverse/agent/gateway/AgentScopeHitlSuspendMiddleware.java.
-- AgentScope event mapping: ArtVerse/src/main/java/com/artverse/agent/gateway/AgentScopeEventMapper.java.
+- AgentScope event mapping: inlined into MangaDirectorAgentNode as mapAgentScopeEvent() private method.
 - AgentScope v2 migration plan: `docs/knowledge/modules/manga-agent/agentscope-v2-refactor-plan.md`.
 - Frontend API and stream parser: `frontend/src/api.ts`.
 - Frontend UI state machine: `frontend/src/components/MangaAgentPage.tsx`.

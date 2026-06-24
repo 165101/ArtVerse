@@ -3,8 +3,6 @@ package com.artverse.agent;
 public enum AgentTaskType {
     CHAT("chat"),
     NOVEL("novel"),
-    STORYBOARD("storyboard"),
-    IMAGE("image"),
     MANGA_DIRECTOR("manga-director");
 
     private final String sessionSuffix;

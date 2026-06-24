@@ -4,6 +4,7 @@ import com.artverse.agent.MangaAgentPromptProvider;
 import com.artverse.agent.AgentRunRequest;
 import com.artverse.agent.AgentModelSpec;
 import com.artverse.agent.AgentModelSpecFactory;
+import com.artverse.agent.AgentModelSpecFactory;
 
 import com.artverse.config.ArtVerseProperties;
 import io.agentscope.core.model.Model;
@@ -26,6 +27,7 @@ public class AgentScopeAgentFactory {
 
     private final Model model;
     private final CompactionConfig compactionConfig;
+    private final AgentModelSpecFactory agentModelSpecFactory;
     private final ArtVerseProperties properties;
     private final AgentWorkspaceService agentWorkspaceService;
     private final MangaAgentPromptProvider promptProvider;
@@ -76,19 +78,9 @@ public class AgentScopeAgentFactory {
 
     private AgentModelSpec defaultModelSpec(String userApiKey) {
         if (userApiKey != null && !userApiKey.isBlank()) {
-            return new AgentModelSpec(
-                    "deepseek",
-                    properties.getDeepseek().getBaseUrl(),
-                    properties.getDeepseek().getModel(),
-                    AgentModelSpecFactory.shortHash(userApiKey)
-            );
+            return agentModelSpecFactory.deepSeek(userApiKey);
         }
-        return new AgentModelSpec(
-                "deepseek",
-                properties.getDeepseek().getBaseUrl(),
-                properties.getDeepseek().getModel(),
-                "env"
-        );
+        return agentModelSpecFactory.deepSeek(null);
     }
 
     static String buildAgentCacheKey(AgentRunRequest request, AgentModelSpec fallbackSpec, Path workspace,

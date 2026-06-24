@@ -18,18 +18,14 @@ public record AgentRunEvent(
         return new AgentRunEvent(type, phase, label, null, null, null, Map.of(), OffsetDateTime.now());
     }
 
-    public static AgentRunEvent of(String type, String phase, String label, Map<String, Object> data) {
-        return new AgentRunEvent(type, phase, label, null, null, null,
-                data == null ? Map.of() : Map.copyOf(data), OffsetDateTime.now());
-    }
-
     public static AgentRunEvent text(String delta) {
         return new AgentRunEvent("text_delta", "replying", "正在整理回复", null, "running",
                 delta, Map.of(), OffsetDateTime.now());
     }
 
     public static AgentRunEvent step(String node, String status, String label, Map<String, Object> data) {
-        return of("workflow_step", status, label, merge(node, status, data));
+        return new AgentRunEvent("workflow_step", status, label, null, null, null,
+                merge(node, status, data), OffsetDateTime.now());
     }
 
     public static AgentRunEvent tool(String type, String label, String toolName, String status, Map<String, Object> data) {

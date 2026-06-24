@@ -1,6 +1,6 @@
 package com.artverse.agent.gateway;
 
-import com.artverse.agent.AgentSessionIdFactory;
+
 import com.artverse.agent.AgentTaskType;
 import com.artverse.agent.MangaAgentRuntimeContext;
 import com.artverse.agent.AgentRunRequest;
@@ -14,11 +14,10 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class AgentScopeRuntimeContextFactory {
 
-    private final AgentSessionIdFactory agentSessionIdFactory;
 
     public RuntimeContext create(AgentRunRequest request) {
         RuntimeContext.Builder builder = RuntimeContext.builder()
-                .sessionId(agentSessionIdFactory.create(request))
+                .sessionId(createSessionId(request))
                 .userId(request.userId());
         if (request.taskType() == AgentTaskType.MANGA_DIRECTOR) {
             builder.put(MangaAgentRuntimeContext.class, new MangaAgentRuntimeContext(
@@ -40,4 +39,28 @@ public class AgentScopeRuntimeContextFactory {
             throw new BusinessException(400, "Invalid agent user id");
         }
     }
+
+    static String createSessionId(AgentRunRequest request) {
+        return String.join("-",
+                "u", safeSegment(request.userId()),
+                "story", safeSegment(request.storyId()),
+                "chapter", safeSegment(request.chapterId()),
+                "conv", safeSegment(request.conversationId()),
+                safeSegment(request.taskType() == null ? "unknown" : request.taskType().sessionSuffix())
+        );
+    }
+
+    public static String safeSegment(Object value) {
+        if (value == null) {
+            return "none";
+        }
+        String normalized = String.valueOf(value).trim().toLowerCase();
+        if (normalized.isBlank()) {
+            return "none";
+        }
+        String safe = normalized.replaceAll("[^a-z0-9._-]", "-")
+                .replace("..", "-");
+        return safe.isBlank() ? "none" : safe;
+    }
+
 }

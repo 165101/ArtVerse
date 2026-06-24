@@ -1,6 +1,7 @@
 package com.artverse.application;
 
 import com.artverse.agent.*;
+import com.artverse.agent.gateway.AgentScopeHarnessAgentGateway;
 import com.artverse.common.BusinessException;
 import com.artverse.config.ArtVerseProperties;
 import com.artverse.domain.*;
@@ -22,7 +23,7 @@ public class NovelService {
     private final ChapterRepository chapterRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final MangaImageRepository mangaImageRepository;
-    private final AgentGateway harnessAgentGateway;
+    private final AgentScopeHarnessAgentGateway harnessAgentGateway;
     private final AgentModelSpecFactory agentModelSpecFactory;
     private final ArtVerseProperties properties;
 

@@ -4,6 +4,7 @@ import com.artverse.common.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import com.artverse.agent.gateway.AgentScopeRuntimeContextFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -26,13 +27,13 @@ public class AgentWorkspaceService {
     public Path workspaceFor(String userId, Long storyId, Object conversationId) {
         Path workspace = workspaceRoot
                 .resolve("users")
-                .resolve(AgentSessionIdFactory.safeSegment(userId))
+                .resolve(AgentScopeRuntimeContextFactory.safeSegment(userId))
                 .resolve("stories")
-                .resolve(AgentSessionIdFactory.safeSegment(storyId));
+                .resolve(AgentScopeRuntimeContextFactory.safeSegment(storyId));
         if (conversationId != null) {
             workspace = workspace
                     .resolve("conversations")
-                    .resolve(AgentSessionIdFactory.safeSegment(conversationId));
+                    .resolve(AgentScopeRuntimeContextFactory.safeSegment(conversationId));
         }
         workspace = workspace.normalize();
         ensureWithinRoot(workspace);

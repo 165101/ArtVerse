@@ -2,9 +2,6 @@ package com.artverse.agent.gateway;
 import com.artverse.agent.AgentRunRequest;
 import com.artverse.agent.AgentMessage;
 import com.artverse.agent.AgentModelSpec;
-import com.artverse.agent.AgentSessionIdFactory;
-
-import com.artverse.agent.AgentGateway;
 
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
@@ -20,12 +17,11 @@ import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.List;
-import com.artverse.agent.MangaAgentPromptProvider;
 
 @Slf4j
 @Component
 @Primary
-public class AgentScopeHarnessAgentGateway implements com.artverse.agent.AgentGateway {
+public class AgentScopeHarnessAgentGateway {
 
     private final AgentScopeAgentFactory agentFactory;
     private final AgentScopeRuntimeContextFactory runtimeContextFactory;
@@ -37,7 +33,6 @@ public class AgentScopeHarnessAgentGateway implements com.artverse.agent.AgentGa
         this.runtimeContextFactory = runtimeContextFactory;
     }
 
-    @Override
     public Flux<String> streamChat(AgentRunRequest request) {
         return streamEvents(request)
                 .ofType(TextBlockDeltaEvent.class)
@@ -45,7 +40,6 @@ public class AgentScopeHarnessAgentGateway implements com.artverse.agent.AgentGa
                 .filter(delta -> delta != null && !delta.isEmpty());
     }
 
-    @Override
     public Flux<AgentEvent> streamEvents(AgentRunRequest request) {
         HarnessAgent agent = agentFactory.getOrCreate(request);
         RuntimeContext ctx = runtimeContextFactory.create(request);
@@ -54,7 +48,6 @@ public class AgentScopeHarnessAgentGateway implements com.artverse.agent.AgentGa
         return agent.streamEvents(messages, ctx);
     }
 
-    @Override
     public Mono<String> generateText(AgentRunRequest request) {
         HarnessAgent agent = agentFactory.getOrCreate(request);
         RuntimeContext ctx = runtimeContextFactory.create(request);
@@ -63,28 +56,6 @@ public class AgentScopeHarnessAgentGateway implements com.artverse.agent.AgentGa
         return agent.call(messages, ctx)
                 .map(Msg::getTextContent);
     }
-
-    static Long parseUserIdForTool(String userId) {
-        return AgentScopeRuntimeContextFactory.parseUserIdForTool(userId);
-    }
-
-    static String buildAgentCacheKey(AgentRunRequest request, AgentModelSpec fallbackSpec) {
-        return buildAgentCacheKey(request, fallbackSpec, null);
-    }
-
-    static String buildAgentCacheKey(AgentRunRequest request, AgentModelSpec fallbackSpec, java.nio.file.Path workspace) {
-        return AgentScopeAgentFactory.buildAgentCacheKey(
-                request,
-                fallbackSpec,
-                workspace,
-                new MangaAgentPromptProvider().promptVersionFor(request.taskType())
-        );
-    }
-
-    static RuntimeContext buildRuntimeContextForTest(AgentRunRequest request, AgentSessionIdFactory factory) {
-        return new AgentScopeRuntimeContextFactory(factory).create(request);
-    }
-
     static List<AgentMessage> prepareInputMessages(AgentRunRequest request) {
         List<String> systemMessages = new ArrayList<>();
         List<AgentMessage> inputMessages = new ArrayList<>();
