@@ -19,8 +19,6 @@ import {
   cancelMangaAgentConversationRun,
   createMangaAgentConversation,
   getMangaAgentConversationMessages,
-  getMangaAgentConversationRunState,
-  getMangaAgentMessages,
   getOpenMangaAgentConversationRun,
   listChapters,
   listMangaAgentConversations,
@@ -59,9 +57,6 @@ function routeLabel(route: MangaWorkflowRoute | string | undefined): string {
   return WORKFLOW_ROUTES.find((item) => item.value === route)?.label || '导演';
 }
 
-function requestIdOf(value: { requestId?: string; request_id?: string } | null | undefined) {
-  return value?.requestId ?? value?.request_id ?? '';
-}
 
 function createRequestId() {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -400,18 +395,7 @@ export default function MangaAgentPage() {
     }
   }
 
-  async function reloadMessages(id: number, requestChapterId: string, requestConversationId: string) {
-    if (!requestConversationId || requestConversationId === 'undefined') {
-      return;
-    }
-    const list = requestConversationId
-      ? await getMangaAgentConversationMessages(id, requestConversationId)
-      : await getMangaAgentMessages(id);
-    if (chapterIdRef.current === requestChapterId && conversationIdRef.current === requestConversationId) {
-      setMessages(toMessages(list));
-    }
-  }
-
+  
   function handleAgentEvent(event: MangaAgentRunEvent): { reply?: string; waiting?: boolean } | Error | null {
     if (event.type === 'status') {
       setRunStatus(event.data.message || '智能体正在运行...');

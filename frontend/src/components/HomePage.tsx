@@ -69,8 +69,8 @@ export default function HomePage({ onSelectStory }: Props) {
   const [editDesc, setEditDesc] = useState('');
 
   const importFileRef = useRef<HTMLInputElement>(null);
-  const [uploadingCover, setUploadingCover] = useState<number | null>(null);
   const [importingStory, setImportingStory] = useState(false);
+  const [, setUploadingCover] = useState<number | null>(null);
   const [importProgress, setImportProgress] = useState<{ message: string; percent?: number } | null>(null);
   const [exportingStoryId, setExportingStoryId] = useState<number | null>(null);
 
@@ -543,7 +543,7 @@ export default function HomePage({ onSelectStory }: Props) {
 
       {/* Header */}
       <header className="border-b border-ink-border glass backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-3 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-coral flex items-center justify-center">
               <Sparkles size={18} className="text-cream" />
@@ -575,7 +575,7 @@ export default function HomePage({ onSelectStory }: Props) {
       </header>
 
       {/* Content */}
-      <main className="max-w-6xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto px-3 py-8">
         {/* New story modal */}
         {showNew && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4" onClick={() => setShowNew(false)}>
@@ -689,7 +689,7 @@ export default function HomePage({ onSelectStory }: Props) {
 
         {/* Story cards grid */}
         {stories.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {stories.map((s) => (
               <div
                 key={s.id}
