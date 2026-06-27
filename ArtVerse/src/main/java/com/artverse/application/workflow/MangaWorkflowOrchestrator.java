@@ -86,7 +86,8 @@ public class MangaWorkflowOrchestrator {
                                                  String deepseekApiKey,
                                                  AgentModelSpec modelSpec, AgentRunToolStatus.RunState toolState) {
         MangaWorkflowContextSnapshot workflowContext = assembleContext(conversation, message, route);
-        MangaWorkflowRoute executionRoute = resolveExecutionRoute(workflowContext, null, null);
+        MangaWorkflowRoute executionRoute = resolveExecutionRoute(workflowContext, null, null,
+                deepseekApiKey, modelSpec);
         workflowContext = withRoute(workflowContext, executionRoute);
         log.info("Workflow route for request {} -> {}", effectiveRequestId, workflowContext.route());
         MangaWorkflowExecutionContext context = executionContext(
@@ -163,7 +164,8 @@ public class MangaWorkflowOrchestrator {
                 "正在路由当前任务",
                 Map.of("route", workflowContext.route().name())
         ));
-        MangaWorkflowRoute executionRoute = resolveExecutionRoute(workflowContext, run, sink);
+        MangaWorkflowRoute executionRoute = resolveExecutionRoute(workflowContext, run, sink,
+                deepseekApiKey, modelSpec);
         workflowContext = withRoute(workflowContext, executionRoute);
         if (executionRoute != MangaWorkflowRoute.AUTO) {
             sink.sendRunEvent(run, AgentRunEvent.step(
@@ -198,7 +200,9 @@ public class MangaWorkflowOrchestrator {
 
     private MangaWorkflowRoute resolveExecutionRoute(MangaWorkflowContextSnapshot workflowContext,
                                                      MangaAgentRun run,
-                                                     MangaAgentRunEventPublisher.RunEventSink sink) {
+                                                     MangaAgentRunEventPublisher.RunEventSink sink,
+                                                     String deepseekApiKey,
+                                                     AgentModelSpec modelSpec) {
         if (workflowContext.route() != MangaWorkflowRoute.AUTO) {
             return workflowContext.route();
         }
@@ -212,7 +216,9 @@ public class MangaWorkflowOrchestrator {
         }
         MangaIntentResult intent = intentClassifierService.classify(
                 workflowContext.conversationSummary(),
-                workflowContext
+                workflowContext,
+                deepseekApiKey,
+                modelSpec
         );
         if (sink != null && run != null) {
             sink.sendRunEvent(run, new AgentRunEvent(
