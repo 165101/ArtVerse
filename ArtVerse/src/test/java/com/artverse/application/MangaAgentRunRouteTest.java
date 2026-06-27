@@ -29,27 +29,27 @@ class MangaAgentRunRouteTest {
         Fixture fixture = fixture();
         MangaAgentRun run = run(fixture.user, fixture.chapter, UUID.randomUUID(), "hello");
         run.setStatus(MangaAgentRunStatus.WAITING_USER);
-        run.setRoute(MangaWorkflowRoute.REVIEW);
+        run.setRoute(MangaWorkflowRoute.DIRECTOR);
         run.setUserInputRequestJson("{\"question\":\"选择方案\",\"options\":[],\"allowFreeText\":false,\"reason\":\"\"}");
 
         when(fixture.eventRepository.findByRunIdOrderByIdAsc(99L)).thenReturn(List.of());
 
         MangaAgentRunService.RunSnapshot snapshot = fixture.service.snapshot(run);
 
-        assertThat(snapshot.route()).isEqualTo(MangaWorkflowRoute.REVIEW);
+        assertThat(snapshot.route()).isEqualTo(MangaWorkflowRoute.DIRECTOR);
     }
 
     @Test
-    void snapshotCanRestoreAutoRoute() {
+    void snapshotPersistsDirectorRoute() {
         Fixture fixture = fixture();
         MangaAgentRun run = run(fixture.user, fixture.chapter, UUID.randomUUID(), "hello");
-        run.setRoute(MangaWorkflowRoute.AUTO);
+        run.setRoute(MangaWorkflowRoute.DIRECTOR);
 
         when(fixture.eventRepository.findByRunIdOrderByIdAsc(99L)).thenReturn(List.of());
 
         MangaAgentRunService.RunSnapshot snapshot = fixture.service.snapshot(run);
 
-        assertThat(snapshot.route()).isEqualTo(MangaWorkflowRoute.AUTO);
+        assertThat(snapshot.route()).isEqualTo(MangaWorkflowRoute.DIRECTOR);
     }
 
     private Fixture fixture() {

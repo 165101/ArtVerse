@@ -11,6 +11,7 @@ import com.artverse.domain.Story;
 import com.artverse.domain.User;
 import com.artverse.persistence.MangaAgentConversationRepository;
 import com.artverse.persistence.MangaAgentMessageRepository;
+import com.artverse.guard.AgentConcurrencyGate;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -77,6 +78,7 @@ class MangaAgentServiceTest {
 
         MangaAgentConversationService conversationService =
                 new MangaAgentConversationService(conversationRepository, messageRepository, accessService);
+        AgentConcurrencyGate concurrencyGate = mock(AgentConcurrencyGate.class);
         MangaAgentService service = new MangaAgentService(
                 conversationService,
                 runService,
@@ -85,6 +87,7 @@ class MangaAgentServiceTest {
                 toolStatus,
                 accessService,
                 properties,
+                concurrencyGate,
                 Executors.newSingleThreadExecutor()
         );
         return new Fixture(service, orchestrator, user);

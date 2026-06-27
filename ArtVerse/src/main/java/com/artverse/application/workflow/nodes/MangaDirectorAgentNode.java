@@ -36,7 +36,9 @@ import com.artverse.domain.MangaAgentMessage;
 import com.artverse.domain.MessageRole;
 import com.artverse.domain.User;
 import io.agentscope.core.tool.ToolSuspendException;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -47,6 +49,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class MangaDirectorAgentNode implements MangaWorkflowNodeHandler {
@@ -86,6 +89,9 @@ public class MangaDirectorAgentNode implements MangaWorkflowNodeHandler {
         } catch (ToolSuspendException e) {
             throwIfWaitingForUser(context);
             throw new BusinessException(502, "Agent tool suspended without user input");
+        } catch (CallNotPermittedException e) {
+            log.warn("Circuit breaker open for agent LLM, fast-failing request={}", context.requestId());
+            throw new BusinessException(503, "AI 服务暂时不可用，请稍后重试");
         } catch (BusinessException e) {
             if (context.toolState().hasSuccessfulMutatingTool()) {
                 return mangaAgentConversationService.fallbackAfterToolSuccess(
@@ -145,6 +151,9 @@ public class MangaDirectorAgentNode implements MangaWorkflowNodeHandler {
         } catch (ToolSuspendException e) {
             throwIfWaitingForUser(context);
             throw new BusinessException(502, "Agent tool suspended without user input");
+        } catch (CallNotPermittedException e) {
+            log.warn("Circuit breaker open for agent LLM, fast-failing request={}", context.requestId());
+            throw new BusinessException(503, "AI 服务暂时不可用，请稍后重试");
         } catch (Exception e) {
             if (mangaAgentRunService.isTerminal(context.requestId(), context.user().getId(), context.chapter().getId())) {
                 return Map.of("reply", "");

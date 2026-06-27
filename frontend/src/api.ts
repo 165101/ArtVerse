@@ -1320,7 +1320,6 @@ class ArtVerseMangaAgentHttpAgent extends HttpAgent {
   private readonly message: string;
   private readonly requestId?: string;
   private readonly answer?: string;
-  private readonly route?: MangaWorkflowRoute;
 
   constructor(
     url: string,
@@ -1328,7 +1327,6 @@ class ArtVerseMangaAgentHttpAgent extends HttpAgent {
     requestId: string | undefined,
     abortController: AbortController,
     answer?: string,
-    route?: MangaWorkflowRoute,
   ) {
     super({
       url,
@@ -1337,7 +1335,6 @@ class ArtVerseMangaAgentHttpAgent extends HttpAgent {
     this.message = message;
     this.requestId = requestId;
     this.answer = answer;
-    this.route = route;
     this.abortController = abortController;
   }
 
@@ -1353,7 +1350,6 @@ class ArtVerseMangaAgentHttpAgent extends HttpAgent {
         ? {
           message: this.message,
           requestId: this.requestId || input.runId,
-          route: this.route,
         }
         : {
           answer: this.answer,
@@ -1369,7 +1365,6 @@ export function runMangaAgentAgUiStream(
   requestId: string | undefined,
   onEvent: (event: MangaAgentRunEvent) => void,
   conversationId?: string,
-  route?: MangaWorkflowRoute,
 ): AbortController {
   const controller = new AbortController();
   const agent = new ArtVerseMangaAgentHttpAgent(
@@ -1379,8 +1374,6 @@ export function runMangaAgentAgUiStream(
     message,
     requestId,
     controller,
-    undefined,
-    route,
   );
   const subscription = agent.run({
     threadId: conversationId ? `chapter-${chapterId}-conversation-${conversationId}` : `chapter-${chapterId}`,

@@ -31,9 +31,9 @@ class WebClientImage2ClientTest {
 
     private BusinessException invokeMapHttpError(WebClientImage2Client client, WebClientResponseException ex) {
         try {
-            var method = WebClientImage2Client.class.getDeclaredMethod("mapHttpError", String.class, WebClientResponseException.class);
+            var method = WebClientImage2Client.class.getDeclaredMethod("mapHttpError", WebClientResponseException.class);
             method.setAccessible(true);
-            return (BusinessException) method.invoke(client, "https://api.duojie.games/v1/images/generations", ex);
+            return (BusinessException) method.invoke(client, ex);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

@@ -8,6 +8,7 @@ import com.artverse.domain.MangaAgentConversation;
 import com.artverse.domain.MangaAgentMessage;
 import com.artverse.domain.MangaAgentRun;
 import com.artverse.domain.User;
+import com.artverse.guard.AgentConcurrencyGate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,7 @@ public class MangaAgentService {
     private final AgentRunToolStatus agentRunToolStatus;
     private final ChapterAccessService chapterAccessService;
     private final ArtVerseProperties properties;
+    private final AgentConcurrencyGate agentConcurrencyGate;
 
     @Qualifier("mangaGenerationExecutor")
     private final ExecutorService executor;
@@ -70,11 +72,6 @@ public class MangaAgentService {
         return runInternal(conversation, message, requestId, MangaWorkflowRoute.DIRECTOR);
     }
 
-    public RunResult run(Long chapterId, String message, UUID requestId, MangaWorkflowRoute route, User user) {
-        MangaAgentConversation conversation = conversationService.activeOrCreate(chapterId, user);
-        return runInternal(conversation, message, requestId, route);
-    }
-
     public RunResult run(Long chapterId, UUID conversationId, String message, UUID requestId, User user) {
         MangaAgentConversation conversation = conversationService.requireConversation(chapterId, user, conversationId);
         return runInternal(conversation, message, requestId, MangaWorkflowRoute.DIRECTOR);
@@ -83,17 +80,22 @@ public class MangaAgentService {
     private RunResult runInternal(MangaAgentConversation conversation, String message, UUID requestId,
                                   MangaWorkflowRoute route) {
         UUID effectiveRequestId = requestId == null ? UUID.randomUUID() : requestId;
-        try (AgentRunToolStatus.RunScope scope = agentRunToolStatus.start(
-                conversation.getUser().getId(),
-                conversation.getChapter().getId(),
-                effectiveRequestId
-        )) {
-            return new RunResult(
-                    String.valueOf(mangaWorkflowOrchestrator.runWithToolState(
-                                    conversation, message, effectiveRequestId, route, scope.state())
-                            .getOrDefault("reply", "")),
+        agentConcurrencyGate.acquireOrReject();
+        try {
+            try (AgentRunToolStatus.RunScope scope = agentRunToolStatus.start(
+                    conversation.getUser().getId(),
+                    conversation.getChapter().getId(),
                     effectiveRequestId
-            );
+            )) {
+                return new RunResult(
+                        String.valueOf(mangaWorkflowOrchestrator.runWithToolState(
+                                        conversation, message, effectiveRequestId, route, scope.state())
+                                .getOrDefault("reply", "")),
+                        effectiveRequestId
+                );
+            }
+        } finally {
+            agentConcurrencyGate.release();
         }
     }
 
@@ -102,20 +104,9 @@ public class MangaAgentService {
         return runStreamInternal(conversation, message, requestId, MangaWorkflowRoute.DIRECTOR);
     }
 
-    public SseEmitter runAgUiStream(Long chapterId, String message, UUID requestId, MangaWorkflowRoute route, User user) {
-        MangaAgentConversation conversation = conversationService.activeOrCreate(chapterId, user);
-        return runStreamInternal(conversation, message, requestId, route);
-    }
-
     public SseEmitter runAgUiStream(Long chapterId, UUID conversationId, String message, UUID requestId, User user) {
         MangaAgentConversation conversation = conversationService.requireConversation(chapterId, user, conversationId);
         return runStreamInternal(conversation, message, requestId, MangaWorkflowRoute.DIRECTOR);
-    }
-
-    public SseEmitter runAgUiStream(Long chapterId, UUID conversationId, String message, UUID requestId,
-                                    MangaWorkflowRoute route, User user) {
-        MangaAgentConversation conversation = conversationService.requireConversation(chapterId, user, conversationId);
-        return runStreamInternal(conversation, message, requestId, route);
     }
 
     private SseEmitter runStreamInternal(MangaAgentConversation conversation, String message, UUID requestId,
@@ -127,30 +118,35 @@ public class MangaAgentService {
         MangaAgentRunEventPublisher.RunEventSink sink = mangaAgentRunEventPublisher.newSink(emitter);
         AtomicReference<MangaAgentRun> runRef = new AtomicReference<>();
 
+        agentConcurrencyGate.acquireOrReject();
         executor.submit(() -> {
-            try (AgentRunToolStatus.RunScope ignored = agentRunToolStatus.start(
-                    user.getId(),
-                    chapterId,
-                    effectiveRequestId,
-                    event -> sink.sendToolEvent(runRef.get(), event)
-            )) {
-                mangaWorkflowOrchestrator.runStreamLeader(
-                        conversation, message, effectiveRequestId, route, ignored.state(), sink, runRef);
-            } catch (AgentUserInputRequiredException e) {
-                MangaAgentRun run = runRef.get();
-                if (run != null) {
-                    mangaAgentRunService.markWaiting(conversation, effectiveRequestId, e.request());
+            try {
+                try (AgentRunToolStatus.RunScope ignored = agentRunToolStatus.start(
+                        user.getId(),
+                        chapterId,
+                        effectiveRequestId,
+                        event -> sink.sendToolEvent(runRef.get(), event)
+                )) {
+                    mangaWorkflowOrchestrator.runStreamLeader(
+                            conversation, message, effectiveRequestId, route, ignored.state(), sink, runRef);
+                } catch (AgentUserInputRequiredException e) {
+                    MangaAgentRun run = runRef.get();
+                    if (run != null) {
+                        mangaAgentRunService.markWaiting(conversation, effectiveRequestId, e.request());
+                    }
+                    sink.sendUserInputRequested(run, effectiveRequestId, e.request());
+                } catch (Exception e) {
+                    String detail = e.getMessage() == null ? "Agent request failed" : e.getMessage();
+                    MangaAgentRun run = runRef.get();
+                    if (run != null && !mangaAgentRunService.isTerminal(conversation, effectiveRequestId)) {
+                        mangaAgentRunService.markFailed(conversation, effectiveRequestId, detail);
+                    }
+                    sink.sendError(run, effectiveRequestId, detail);
+                } finally {
+                    sink.complete();
                 }
-                sink.sendUserInputRequested(run, effectiveRequestId, e.request());
-            } catch (Exception e) {
-                String detail = e.getMessage() == null ? "Agent request failed" : e.getMessage();
-                MangaAgentRun run = runRef.get();
-                if (run != null && !mangaAgentRunService.isTerminal(conversation, effectiveRequestId)) {
-                    mangaAgentRunService.markFailed(conversation, effectiveRequestId, detail);
-                }
-                sink.sendError(run, effectiveRequestId, detail);
             } finally {
-                sink.complete();
+                agentConcurrencyGate.release();
             }
         });
 
@@ -174,38 +170,43 @@ public class MangaAgentService {
         MangaAgentRunEventPublisher.RunEventSink sink = mangaAgentRunEventPublisher.newSink(emitter);
         AtomicReference<MangaAgentRun> runRef = new AtomicReference<>();
 
+        agentConcurrencyGate.acquireOrReject();
         executor.submit(() -> {
-            try (AgentRunToolStatus.RunScope ignored = agentRunToolStatus.start(
-                    user.getId(),
-                    chapterId,
-                    requestId,
-                    event -> sink.sendToolEvent(runRef.get(), event)
-            )) {
-                MangaAgentRunService.RunSnapshot snapshot = requireWaitingSnapshot(conversation, requestId);
-                mangaWorkflowOrchestrator.runStreamLeader(
-                        conversation,
-                        resumeMessage(snapshot, answer),
+            try {
+                try (AgentRunToolStatus.RunScope ignored = agentRunToolStatus.start(
+                        user.getId(),
+                        chapterId,
                         requestId,
-                        snapshot.route(),
-                        ignored.state(),
-                        sink,
-                        runRef
-                );
-            } catch (AgentUserInputRequiredException e) {
-                MangaAgentRun run = runRef.get();
-                if (run != null) {
-                    mangaAgentRunService.markWaiting(conversation, requestId, e.request());
+                        event -> sink.sendToolEvent(runRef.get(), event)
+                )) {
+                    MangaAgentRunService.RunSnapshot snapshot = requireWaitingSnapshot(conversation, requestId);
+                    mangaWorkflowOrchestrator.runStreamLeader(
+                            conversation,
+                            resumeMessage(snapshot, answer),
+                            requestId,
+                            snapshot.route(),
+                            ignored.state(),
+                            sink,
+                            runRef
+                    );
+                } catch (AgentUserInputRequiredException e) {
+                    MangaAgentRun run = runRef.get();
+                    if (run != null) {
+                        mangaAgentRunService.markWaiting(conversation, requestId, e.request());
+                    }
+                    sink.sendUserInputRequested(run, requestId, e.request());
+                } catch (Exception e) {
+                    String detail = e.getMessage() == null ? "Agent request failed" : e.getMessage();
+                    MangaAgentRun run = runRef.get();
+                    if (run != null && !mangaAgentRunService.isTerminal(conversation, requestId)) {
+                        mangaAgentRunService.markFailed(conversation, requestId, detail);
+                    }
+                    sink.sendError(run, requestId, detail);
+                } finally {
+                    sink.complete();
                 }
-                sink.sendUserInputRequested(run, requestId, e.request());
-            } catch (Exception e) {
-                String detail = e.getMessage() == null ? "Agent request failed" : e.getMessage();
-                MangaAgentRun run = runRef.get();
-                if (run != null && !mangaAgentRunService.isTerminal(conversation, requestId)) {
-                    mangaAgentRunService.markFailed(conversation, requestId, detail);
-                }
-                sink.sendError(run, requestId, detail);
             } finally {
-                sink.complete();
+                agentConcurrencyGate.release();
             }
         });
 

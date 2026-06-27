@@ -3,7 +3,6 @@ package com.artverse.agent.gateway;
 import com.artverse.agent.AgentModelSpec;
 import com.artverse.agent.AgentModelSpecFactory;
 import com.artverse.agent.AgentRunRequest;
-import com.artverse.agent.AgentTaskType;
 import com.artverse.agent.AgentWorkspaceService;
 import com.artverse.agent.MangaAgentPromptProvider;
 import com.artverse.application.AgentRunToolStatus;
@@ -97,18 +96,13 @@ public class AgentScopeAgentFactory {
                 .disableFilesystemTools()
                 .middleware(new AgentScopeHitlSuspendMiddleware())
                 .build();
-        if (request.taskType() == AgentTaskType.MANGA_DIRECTOR) {
-            configureMangaDirectorTools(agent.getToolkit());
-        } else if (request.taskType() == AgentTaskType.MANGA_REVIEW
-                || request.taskType() == AgentTaskType.MANGA_CHAT
-                || request.taskType() == AgentTaskType.MANGA_HITL) {
-            configureReadOnlyTools(agent.getToolkit());
-        }
+        configureTools(agent.getToolkit());
         return agent;
     }
 
-    private void configureMangaDirectorTools(Toolkit toolkit) {
+    private void configureTools(Toolkit toolkit) {
         MangaToolSupport support = new MangaToolSupport(agentRunToolStatus);
+
         toolkit.createToolGroup(
                 CONTEXT_TOOLS,
                 "Read-only manga chapter, story, storyboard, and image context tools.",
@@ -124,6 +118,7 @@ public class AgentScopeAgentFactory {
                 "Human-in-the-loop tools for asking the user to choose or confirm.",
                 true
         );
+
         toolkit.registration().tool(new MangaContextTools(
                 mangaImageRepository, sceneService, chapterAccessService, agentToolAuditService, support
         )).group(CONTEXT_TOOLS).apply();
@@ -134,21 +129,8 @@ public class AgentScopeAgentFactory {
         toolkit.registration().tool(new MangaHitlTools(agentToolAuditService, support))
                 .group(HITL_TOOLS)
                 .apply();
-        toolkit.setActiveGroups(List.of(CONTEXT_TOOLS, STORYBOARD_TOOLS, HITL_TOOLS));
-        toolkit.registerMetaTool();
-    }
 
-    private void configureReadOnlyTools(Toolkit toolkit) {
-        MangaToolSupport support = new MangaToolSupport(agentRunToolStatus);
-        toolkit.createToolGroup(
-                CONTEXT_TOOLS,
-                "Read-only manga chapter, story, storyboard, and image context tools.",
-                true
-        );
-        toolkit.registration().tool(new MangaContextTools(
-                mangaImageRepository, sceneService, chapterAccessService, agentToolAuditService, support
-        )).group(CONTEXT_TOOLS).apply();
-        toolkit.setActiveGroups(List.of(CONTEXT_TOOLS));
+        toolkit.setActiveGroups(List.of(CONTEXT_TOOLS, STORYBOARD_TOOLS, HITL_TOOLS));
         toolkit.registerMetaTool();
     }
 
