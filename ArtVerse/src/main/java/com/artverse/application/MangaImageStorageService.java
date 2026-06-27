@@ -1,7 +1,6 @@
 package com.artverse.application;
 
 import com.artverse.config.ArtVerseProperties;
-import com.artverse.domain.Chapter;
 import com.artverse.domain.MangaImage;
 import com.artverse.domain.StorageProvider;
 import com.artverse.media.MediaStorageService;
@@ -64,30 +63,17 @@ public class MangaImageStorageService {
                     m.setImageNumber(imageNumber);
                     return m;
                 });
-        applyStoredObject(mangaImage, stored, prompt);
-        return mangaImageRepository.saveAndFlush(mangaImage);
-    }
-
-    public MangaImage replaceGeneratedPanel(Chapter chapter, int imageNumber, Path generatedFile, String prompt) {
-        String filename = mediaStorageService.generateUniqueFilename("panel_" + String.format("%02d", imageNumber), ".png");
-        String objectKey = "stories/" + chapter.getStory().getId() + "/chapters/" + chapter.getId() + "/panels/" + filename;
-        StoredObject stored = objectStorageService.putPng(objectKey, generatedFile, "image/png");
-
-        MangaImage mangaImage = mangaImageRepository
-                .findByChapterIdAndImageNumber(chapter.getId(), imageNumber)
-                .orElseGet(() -> {
-                    MangaImage m = new MangaImage();
-                    m.setChapter(chapter);
-                    m.setImageNumber(imageNumber);
-                    return m;
-                });
-
         String oldBucket = mangaImage.getBucket();
         String oldObjectKey = mangaImage.getObjectKey();
         applyStoredObject(mangaImage, stored, prompt);
-        MangaImage saved = mangaImageRepository.save(mangaImage);
+        MangaImage saved = mangaImageRepository.saveAndFlush(mangaImage);
         cleanupOldObject(oldBucket, oldObjectKey);
         return saved;
+    }
+
+    public MangaImage replaceGeneratedPanel(Long chapterId, Long storyId, int imageNumber, Path generatedFile,
+                                           String prompt) {
+        return saveGeneratedPanel(chapterId, storyId, imageNumber, generatedFile, prompt);
     }
 
     public void cleanupTempFile(Path tempFile) {

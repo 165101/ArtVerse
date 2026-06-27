@@ -210,7 +210,7 @@ public class CharacterProfileService {
     @Transactional(readOnly = true)
     public List<CharacterProfile> listByAssetGroup(Long groupId) {
         Long userId = currentUserId();
-        StoryAssetGroup group = assetGroupRepository.findByIdAndUserId(groupId, userId)
+        StoryAssetGroup group = assetGroupRepository.findByIdAndUserIdWithCharacters(groupId, userId)
                 .orElseThrow(() -> new BusinessException(404, "Asset group not found"));
         return List.copyOf(group.getCharacters());
     }
@@ -218,7 +218,7 @@ public class CharacterProfileService {
     @Transactional
     public void setAssetGroupCharacters(Long groupId, List<Long> characterIds) {
         Long userId = currentUserId();
-        StoryAssetGroup group = assetGroupRepository.findByIdAndUserId(groupId, userId)
+        StoryAssetGroup group = assetGroupRepository.findByIdAndUserIdWithCharacters(groupId, userId)
                 .orElseThrow(() -> new BusinessException(404, "Asset group not found"));
         Set<CharacterProfile> profiles = new LinkedHashSet<>();
         for (Long cid : characterIds) {

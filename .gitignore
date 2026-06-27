@@ -14,8 +14,6 @@ Thumbs.db
 **/dist/
 **/node_modules/
 **/.playwright-cli/
-.m2-repo/
-.playwright-mcp/
 
 # Local AgentScope workspaces
 .agentscope/

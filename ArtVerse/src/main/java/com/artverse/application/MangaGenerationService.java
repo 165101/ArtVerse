@@ -16,7 +16,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.nio.file.Path;
@@ -83,8 +82,9 @@ public class MangaGenerationService {
         String mangaStyle = chapter.getStory().getMangaStyle();
         String storyRefImage = chapter.getStory().getRefImage();
         Long effectiveAssetGroupId = chapter.getAssetGroup() != null ? chapter.getAssetGroup().getId() : null;
-        String generationProfiles = buildGenerationProfiles(chapter, chapter.getAssetGroup());
+        String profiles = buildGenerationProfiles(chapter, chapter.getAssetGroup());
         String chapterRefImage = chapter.getRefImage();
+        String colorMode = chapter.getColorMode().name().toLowerCase();
 
         MangaGenerationJob job = new MangaGenerationJob(chapterId, scenes);
         activeJobs.put(chapterId, job);
@@ -93,9 +93,9 @@ public class MangaGenerationService {
         job.addSubscriber(emitter);
 
         try {
-            executor.submit(() -> runGenerationJob(job, storyId, mangaStyle, storyRefImage, effectiveAssetGroupId,
-                    chapter.getId(), chapter.getColorMode().name().toLowerCase(), chapterRefImage, generationProfiles,
-                    imageApiKey, deepseekApiKey, onComplete, onError));
+            GenerationContext ctx = new GenerationContext(storyId, mangaStyle, storyRefImage,
+                    effectiveAssetGroupId, chapterId, colorMode, chapterRefImage, profiles);
+            executor.submit(() -> runGenerationJob(job, ctx, imageApiKey, onComplete, onError));
         } catch (RuntimeException e) {
             activeJobs.remove(chapterId);
             throw e;
@@ -104,19 +104,17 @@ public class MangaGenerationService {
         return emitter;
     }
 
-    private void runGenerationJob(MangaGenerationJob job, Long storyId, String mangaStyle,
-                                   String storyRefImage, Long assetGroupId, Long chapterId, String colorMode,
-                                   String chapterRefImage, String profiles,
-                                   String imageApiKey, String deepseekApiKey,
-                                   Runnable onComplete, Consumer<String> onError) {
+    private void runGenerationJob(MangaGenerationJob job, GenerationContext ctx,
+                                   String imageApiKey, Runnable onComplete, Consumer<String> onError) {
         try {
             // Send scenes event
             job.broadcastEvent("scenes", objectMapper.writeValueAsString(Map.of("scenes", job.getScenes())));
 
-            if (mangaStyle == null || mangaStyle.isBlank()) mangaStyle = "japanese_manga";
+            String mangaStyle = ctx.mangaStyle() != null && !ctx.mangaStyle().isBlank()
+                    ? ctx.mangaStyle() : "japanese_manga";
 
             MangaImageStorageService.ReferenceImages referenceImages = mangaImageStorageService.prepareReferenceImages(
-                    storyId, chapterId, chapterRefImage, assetGroupId, storyRefImage);
+                    ctx.storyId(), ctx.chapterId(), ctx.chapterRefImage(), ctx.assetGroupId(), ctx.storyRefImage());
             List<Path> imageRequestRefs = referenceImages.requestRefs();
             boolean hasRefImages = referenceImages.hasRefs();
 
@@ -128,7 +126,7 @@ public class MangaGenerationService {
                     String scene = job.getScenes().get(i);
 
                     // Check if image already exists
-                    Optional<MangaImage> existing = mangaImageStorageService.findPanel(chapterId, imageNumber);
+                    Optional<MangaImage> existing = mangaImageStorageService.findPanel(ctx.chapterId(), imageNumber);
                     if (existing.isPresent()) {
                         MangaImage img = existing.get();
                         String url = "/static/manga/" + img.getImagePath();
@@ -145,7 +143,7 @@ public class MangaGenerationService {
                     }
 
                     String prompt = MangaPromptPolicy.buildImagePrompt(
-                            scene, profiles, mangaStyle, colorMode, hasRefImages, job.getScenes(), imageNumber);
+                            scene, ctx.profiles(), mangaStyle, ctx.colorMode(), hasRefImages, job.getScenes(), imageNumber);
 
                     // Retry up to 3 times
                     Exception lastException = null;
@@ -154,13 +152,11 @@ public class MangaGenerationService {
                         if (!job.isRunning()) break;
                         try {
                             // Generate image
-                            GeneratedImage generated = generateImageForJob(imageRequestRefs, imageApiKey, prompt, colorMode);
+                            GeneratedImage generated = generateImageForJob(imageRequestRefs, imageApiKey, prompt, ctx.colorMode());
 
                             // Upload to MinIO
                             MangaImage mangaImage = mangaImageStorageService.saveGeneratedPanel(
-                                    chapterId, storyId, imageNumber, generated.localFile(), prompt);
-
-                            // Find existing or create new — update in place to avoid dup key on retry
+                                    ctx.chapterId(), ctx.storyId(), imageNumber, generated.localFile(), prompt);
 
                             // Send progress (after successful generation)
                             job.broadcastEvent("progress", objectMapper.writeValueAsString(Map.of(
@@ -183,13 +179,13 @@ public class MangaGenerationService {
                         } catch (Exception e) {
                             lastException = e;
                             log.warn("Failed to generate image {}/{} for chapter {} (attempt {}/3): {}",
-                                    imageNumber, job.getScenes().size(), chapterId, attempt + 1, e.getMessage());
+                                    imageNumber, job.getScenes().size(), ctx.chapterId(), attempt + 1, e.getMessage());
                         }
                     }
 
                     if (!success && lastException != null) {
                         log.error("Failed to generate image {}/{} for chapter {} after 3 attempts: {}",
-                                imageNumber, job.getScenes().size(), chapterId, lastException.getMessage());
+                                imageNumber, job.getScenes().size(), ctx.chapterId(), lastException.getMessage());
                         try {
                             job.broadcastEvent("image_error", objectMapper.writeValueAsString(Map.of(
                                     "image_number", imageNumber,
@@ -210,7 +206,7 @@ public class MangaGenerationService {
             onComplete.run();
 
         } catch (Exception e) {
-            log.error("Manga generation failed for chapter {}: {}", chapterId, e.getMessage(), e);
+            log.error("Manga generation failed for chapter {}: {}", ctx.chapterId(), e.getMessage(), e);
             try {
                 job.broadcastEvent("error", objectMapper.writeValueAsString(Map.of("detail", e.getMessage())));
             } catch (Exception ignored) {
@@ -218,7 +214,7 @@ public class MangaGenerationService {
             job.error(e.getMessage());
             onError.accept(e.getMessage());
         } finally {
-            activeJobs.remove(chapterId);
+            activeJobs.remove(ctx.chapterId());
         }
     }
 
@@ -263,42 +259,35 @@ public class MangaGenerationService {
             chapterRepository.save(chapter);
         }
 
-        String profiles = resolveGenerationProfiles(chapter);
+        // Eagerly resolve lazy fields
+        Long storyId = chapter.getStory().getId();
         String mangaStyle = chapter.getStory().getMangaStyle();
-        if (mangaStyle == null || mangaStyle.isBlank()) mangaStyle = "japanese_manga";
+        String storyRefImage = chapter.getStory().getRefImage();
+        Long assetGroupId = chapter.getAssetGroup() != null ? chapter.getAssetGroup().getId() : null;
+        String chapterRefImage = chapter.getRefImage();
         String colorMode = chapter.getColorMode().name().toLowerCase();
+        String profiles = buildGenerationProfiles(chapter, null);
+
         MangaImageStorageService.ReferenceImages referenceImages = mangaImageStorageService.prepareReferenceImages(
-                chapter.getStory().getId(), chapter.getId(), chapter.getRefImage(),
-                chapter.getAssetGroup() != null ? chapter.getAssetGroup().getId() : null,
-                chapter.getStory().getRefImage());
-        List<Path> imageRequestRefs = referenceImages.requestRefs();
+                storyId, chapterId, chapterRefImage, assetGroupId, storyRefImage);
         boolean hasRefImages = referenceImages.hasRefs();
 
-        String optimizedPrompt = MangaPromptPolicy.buildImagePrompt(
-                prompt, profiles, mangaStyle, colorMode, hasRefImages, scenes.isEmpty() ? List.of(prompt) : scenes, imageNumber);
+        String effectiveMangaStyle = mangaStyle != null && !mangaStyle.isBlank() ? mangaStyle : "japanese_manga";
+        String generationPrompt = MangaPromptPolicy.buildImagePrompt(
+                prompt, profiles, effectiveMangaStyle, colorMode, hasRefImages,
+                scenes.isEmpty() ? List.of(prompt) : scenes, imageNumber);
 
-        ImageGenerationRequest request = new ImageGenerationRequest(
-                optimizedPrompt,
-                properties.getImage().getModel(),
-                properties.getImage().getSize(),
-                imageRequestRefs,
-                chapter.getColorMode().name().toLowerCase()
-        );
-
-        GeneratedImage generated;
         try {
-            generated = image2Client.generate(request, imageApiKey).block();
+            GeneratedImage generated = generateImageForJob(referenceImages.requestRefs(), imageApiKey,
+                    generationPrompt, colorMode);
+            try {
+                return mangaImageStorageService.saveGeneratedPanel(chapterId, storyId, imageNumber,
+                        generated.localFile(), generationPrompt);
+            } finally {
+                mangaImageStorageService.cleanupTempFile(generated.localFile());
+            }
         } finally {
             mangaImageStorageService.cleanupTempFiles(referenceImages.tempRefs());
-        }
-        if (generated == null) {
-            throw new BusinessException(502, "Image generation returned null");
-        }
-
-        try {
-            return mangaImageStorageService.replaceGeneratedPanel(chapter, imageNumber, generated.localFile(), optimizedPrompt);
-        } finally {
-            mangaImageStorageService.cleanupTempFile(generated.localFile());
         }
     }
 
@@ -352,10 +341,6 @@ public class MangaGenerationService {
             throw new BusinessException(400, "Asset group does not belong to this chapter's story");
         }
         return assetGroup;
-    }
-
-    private String resolveGenerationProfiles(Chapter chapter) {
-        return buildGenerationProfiles(chapter, null);
     }
 
     private String buildGenerationProfiles(Chapter chapter, StoryAssetGroup selectedAssetGroup) {
@@ -419,4 +404,12 @@ public class MangaGenerationService {
             }
         }
     }
+
+    /**
+     * Snapshot of lazily-resolved entity fields, built on the request thread
+     * so the background generation job never touches Hibernate proxies.
+     */
+    private record GenerationContext(Long storyId, String mangaStyle, String storyRefImage,
+                                     Long assetGroupId, Long chapterId, String colorMode,
+                                     String chapterRefImage, String profiles) {}
 }

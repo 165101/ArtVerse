@@ -47,10 +47,37 @@ public class WebClientImage2Client implements Image2Client {
     private WebClient webClient;
     private ConnectionProvider connectionProvider;
 
+    /**
+     * Initializes a shared {@link WebClient} backed by a Reactor Netty connection pool.
+     *
+     * <p>The underlying {@link HttpClient} is configured to:
+     * <ul>
+     *   <li>Use the JVM's built-in DNS resolver (avoids Netty async DNS failures on Windows)</li>
+     *   <li>Force HTTP/1.1 protocol (avoids HTTP/2 compatibility issues with some proxies)</li>
+     *   <li>Use JDK SSL provider — requires JVM flag {@code -Dio.netty.handler.ssl.noOpenSsl=true}
+     *       to force JDK SSL over OpenSSL (avoids TLS renegotiation issues with some proxies)</li>
+     *   <li>Reuse connections via a shared pool (50 max, 60s idle timeout)</li>
+     * </ul>
+     */
     @PostConstruct
     public void init() {
-        this.connectionProvider = buildConnectionProvider();
-        this.webClient = buildWebClient(buildHttpClient(connectionProvider));
+        this.connectionProvider = ConnectionProvider.builder("image2-pool")
+                .maxConnections(50)
+                .maxIdleTime(Duration.ofSeconds(60))
+                .build();
+        HttpClient httpClient = HttpClient.create(connectionProvider)
+                .resolver(DefaultAddressResolverGroup.INSTANCE)
+                .protocol(HttpProtocol.HTTP11)
+                .responseTimeout(READ_TIMEOUT)
+                .option(io.netty.channel.ChannelOption.CONNECT_TIMEOUT_MILLIS,
+                        (int) CONNECT_TIMEOUT.toMillis());
+        this.webClient = WebClient.builder()
+                .baseUrl(properties.getImage().getBaseUrl())
+                .clientConnector(new org.springframework.http.client.reactive.ReactorClientHttpConnector(httpClient))
+                .exchangeStrategies(ExchangeStrategies.builder()
+                        .codecs(c -> c.defaultCodecs().maxInMemorySize(MAX_IN_MEMORY_SIZE))
+                        .build())
+                .build();
         log.info("WebClientImage2Client initialized with base URL: {}", properties.getImage().getBaseUrl());
     }
 
@@ -60,42 +87,6 @@ public class WebClientImage2Client implements Image2Client {
             connectionProvider.dispose();
             log.info("WebClientImage2Client connection pool disposed");
         }
-    }
-
-    private ConnectionProvider buildConnectionProvider() {
-        return ConnectionProvider.builder("image2-pool")
-                .maxConnections(50)
-                .maxIdleTime(Duration.ofSeconds(60))
-                .build();
-    }
-
-    /**
-     * Builds a Netty HttpClient configured to:
-     * <ul>
-     *   <li>Use JVM's built-in DNS resolver (avoids Netty async DNS failures on Windows)</li>
-     *   <li>Use JDK SSL provider — requires JVM flag {@code -Dio.netty.handler.ssl.noOpenSsl=true}
-     *       to force JDK SSL over OpenSSL (avoids TLS renegotiation issues with some proxies)</li>
-     *   <li>Force HTTP/1.1 protocol (avoids HTTP/2 compatibility issues with some proxies)</li>
-     *   <li>Use a shared connection pool for better performance</li>
-     * </ul>
-     */
-    private HttpClient buildHttpClient(ConnectionProvider connectionProvider) {
-        return HttpClient.create(connectionProvider)
-                .resolver(DefaultAddressResolverGroup.INSTANCE)     // use JVM DNS
-                .protocol(HttpProtocol.HTTP11)   // force HTTP/1.1
-                .responseTimeout(READ_TIMEOUT)
-                .option(io.netty.channel.ChannelOption.CONNECT_TIMEOUT_MILLIS,
-                        (int) CONNECT_TIMEOUT.toMillis());
-    }
-
-    private WebClient buildWebClient(HttpClient httpClient) {
-        return WebClient.builder()
-                .baseUrl(properties.getImage().getBaseUrl())
-                .clientConnector(new org.springframework.http.client.reactive.ReactorClientHttpConnector(httpClient))
-                .exchangeStrategies(ExchangeStrategies.builder()
-                        .codecs(c -> c.defaultCodecs().maxInMemorySize(MAX_IN_MEMORY_SIZE))
-                        .build())
-                .build();
     }
 
     @Override
