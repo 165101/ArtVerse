@@ -14,8 +14,6 @@ Thumbs.db
 **/dist/
 **/node_modules/
 **/.playwright-cli/
-.m2-repo/
-.playwright-mcp/
 
 # Local AgentScope workspaces
 .agentscope/
@@ -27,6 +25,9 @@ frontend/build-*.txt
 frontend/build-error.txt
 sql.zip
 wechat_article_*.txt
+
+# Claude Code configuration
+.claude/
 
 # 备份文件
 backup/
