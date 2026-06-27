@@ -111,8 +111,7 @@ public class WebClientImage2Client implements Image2Client {
                 .bodyToMono(String.class)
                 .timeout(READ_TIMEOUT)
                 .flatMap(response -> parseImageResponse(response, request.prompt()))
-                .onErrorMap(WebClientResponseException.class,
-                        ex -> mapHttpError("/images/generations", ex));
+                .onErrorMap(WebClientResponseException.class, this::mapHttpError);
     }
 
     private Mono<GeneratedImage> generateWithReferences(ImageGenerationRequest request, String apiKey) {
@@ -141,8 +140,7 @@ public class WebClientImage2Client implements Image2Client {
                 .bodyToMono(String.class)
                 .timeout(READ_TIMEOUT)
                 .flatMap(response -> parseImageResponse(response, request.prompt()))
-                .onErrorMap(WebClientResponseException.class,
-                        ex -> mapHttpError("/images/edits", ex));
+                .onErrorMap(WebClientResponseException.class, this::mapHttpError);
     }
 
     private Mono<GeneratedImage> parseImageResponse(String response, String prompt) {
@@ -219,7 +217,7 @@ public class WebClientImage2Client implements Image2Client {
         throw new BusinessException(400, "Image API Key is missing. Please set it in the frontend settings.", "Image");
     }
 
-    private BusinessException mapHttpError(String url, WebClientResponseException ex) {
+    private BusinessException mapHttpError(WebClientResponseException ex) {
         if (ex.getStatusCode().value() == 401) {
             return new BusinessException(401, "Image2 API Key 无效或已过期，请在前端设置中更新。", "Image2");
         }

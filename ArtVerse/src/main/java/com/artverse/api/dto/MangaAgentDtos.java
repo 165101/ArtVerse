@@ -15,7 +15,7 @@ public final class MangaAgentDtos {
     private MangaAgentDtos() {
     }
 
-    public record RunRequest(String message, UUID requestId, MangaWorkflowRoute route) {
+    public record RunRequest(String message, UUID requestId) {
     }
 
     public record RunResponse(String reply, UUID requestId) {

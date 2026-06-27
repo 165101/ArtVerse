@@ -18,25 +18,25 @@ class AgUiEventFactoryTest {
     @Test
     void runStartedCarriesRouteIntoAgUiPayload() {
         AgUiEventFactory factory = new AgUiEventFactory();
-        MangaAgentRun run = run(MangaWorkflowRoute.REVIEW);
+        MangaAgentRun run = run(MangaWorkflowRoute.DIRECTOR);
 
         Map<String, Object> event = factory.runStarted(run, UUID.randomUUID(), "hello");
 
         assertThat(event.get("input")).isInstanceOf(Map.class);
         Map<?, ?> input = (Map<?, ?>) event.get("input");
         Map<?, ?> state = (Map<?, ?>) input.get("state");
-        assertThat(state.get("route")).isEqualTo("REVIEW");
+        assertThat(state.get("route")).isEqualTo("DIRECTOR");
     }
 
     @Test
     void stateSnapshotCarriesRouteIntoAgUiPayload() {
         AgUiEventFactory factory = new AgUiEventFactory();
-        MangaAgentRun run = run(MangaWorkflowRoute.HITL);
+        MangaAgentRun run = run(MangaWorkflowRoute.DIRECTOR);
 
         Map<String, Object> event = factory.stateSnapshot(run, UUID.randomUUID(), "RUNNING", "working");
 
         Map<?, ?> snapshot = (Map<?, ?>) event.get("snapshot");
-        assertThat(snapshot.get("route")).isEqualTo("HITL");
+        assertThat(snapshot.get("route")).isEqualTo("DIRECTOR");
     }
 
     private MangaAgentRun run(MangaWorkflowRoute route) {

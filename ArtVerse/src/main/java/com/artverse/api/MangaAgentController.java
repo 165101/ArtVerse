@@ -75,7 +75,7 @@ public class MangaAgentController {
     public MangaAgentDtos.RunResponse run(@PathVariable Long chapterId,
                                           @RequestBody MangaAgentDtos.RunRequest body) {
         User user = currentUserService.requireCurrentUser();
-        MangaAgentService.RunResult result = mangaAgentService.run(chapterId, body.message(), body.requestId(), body.route(), user);
+        MangaAgentService.RunResult result = mangaAgentService.run(chapterId, body.message(), body.requestId(), user);
         return new MangaAgentDtos.RunResponse(result.reply(), result.requestId());
     }
 
@@ -83,7 +83,7 @@ public class MangaAgentController {
     public SseEmitter runAgUi(@PathVariable Long chapterId,
                               @RequestBody MangaAgentDtos.RunRequest body) {
         User user = currentUserService.requireCurrentUser();
-        return mangaAgentService.runAgUiStream(chapterId, body.message(), body.requestId(), body.route(), user);
+        return mangaAgentService.runAgUiStream(chapterId, body.message(), body.requestId(), user);
     }
 
     @PostMapping("/conversations/{conversationId}/ag-ui/run")
@@ -91,7 +91,7 @@ public class MangaAgentController {
                                           @PathVariable UUID conversationId,
                                           @RequestBody MangaAgentDtos.RunRequest body) {
         User user = currentUserService.requireCurrentUser();
-        return mangaAgentService.runAgUiStream(chapterId, conversationId, body.message(), body.requestId(), body.route(), user);
+        return mangaAgentService.runAgUiStream(chapterId, conversationId, body.message(), body.requestId(), user);
     }
 
     @GetMapping("/runs/open")

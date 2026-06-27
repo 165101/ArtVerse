@@ -64,16 +64,12 @@ interface ExecutionEventItem {
   icon: 'bot' | 'sparkles' | 'wrench' | 'question' | 'check' | 'warning' | 'clock' | 'message' | 'archive';
 }
 
-const WORKFLOW_ROUTES: Array<{ value: MangaWorkflowRoute; label: string; description: string }> = [
-  { value: 'AUTO', label: '自动', description: '先识别用户意图，再进入合适的任务模式' },
-  { value: 'DIRECTOR', label: '导演', description: '规划章节、生成或修订分镜' },
-  { value: 'REVIEW', label: '质检', description: '检查现有分镜和下一步风险' },
-  { value: 'HITL', label: '决策', description: '收束需要用户确认的选择' },
-  { value: 'CHAT', label: '聊天', description: '只回答问题，不修改章节内容' },
+const WORKFLOW_ROUTES: Array<{ value: MangaWorkflowRoute; label: string }> = [
+  { value: 'DIRECTOR', label: '导演' },
 ];
 
 function routeLabel(route: MangaWorkflowRoute | string | undefined): string {
-  return WORKFLOW_ROUTES.find((item) => item.value === route)?.label || '自动';
+  return WORKFLOW_ROUTES.find((item) => item.value === route)?.label || '导演';
 }
 
 function conversationStatusLabel(status?: string): string {
@@ -359,7 +355,6 @@ export default function MangaAgentPage() {
   const [conversationLoading, setConversationLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
-  const [workflowRoute, setWorkflowRoute] = useState<MangaWorkflowRoute>('AUTO');
   const [userInputRequest, setUserInputRequest] = useState<AgentUserInputRequest | null>(null);
   const [customAnswer, setCustomAnswer] = useState('');
   const [draftReply, setDraftReply] = useState('');
@@ -545,7 +540,6 @@ export default function MangaAgentPage() {
   function restoreRunSnapshot(snapshot: MangaAgentRunSnapshot) {
     setActiveRequestId(snapshot.requestId ?? snapshot.request_id ?? null);
     setUserInputRequest(snapshot.userInputRequest ?? null);
-    if (snapshot.route) setWorkflowRoute(snapshot.route);
     setRunStatus(snapshot.status === 'WAITING_USER' ? '等待用户确认' : `业务状态：${snapshot.status}`);
     setBusinessStatus(snapshot.status);
     setDraftReply(snapshot.finalReply || '');
@@ -570,14 +564,12 @@ export default function MangaAgentPage() {
       if (status) setBusinessStatus(status);
       if (message) setRunStatus(message);
       else if (status) setRunStatus(`业务状态：${status}`);
-      if (snapshot.route) setWorkflowRoute(snapshot.route as MangaWorkflowRoute);
     }
 
     if (rawEvent.type === 'RUN_STARTED') {
       const message = String(rawEvent.input?.state?.message || rawEvent.input?.message || '智能体已启动');
       setRunStatus(message);
       setBusinessStatus('RUNNING');
-      if (rawEvent.route) setWorkflowRoute(rawEvent.route as MangaWorkflowRoute);
     }
 
     if (rawEvent.type === 'CUSTOM') {
@@ -588,7 +580,6 @@ export default function MangaAgentPage() {
       if (value.message) setRunStatus(String(value.message));
       const selectedRoute = data.selectedRoute || value.selectedRoute;
       if (rawEvent.name === 'intent_classified' && selectedRoute) {
-        setWorkflowRoute(selectedRoute as MangaWorkflowRoute);
         setRunStatus(`已识别为${routeLabel(String(selectedRoute))}模式`);
       }
     }
@@ -737,7 +728,6 @@ export default function MangaAgentPage() {
       requestId,
       (event) => handleStreamEvent(event),
       selectedConversationId,
-      workflowRoute,
     );
   }
 
@@ -1003,26 +993,6 @@ export default function MangaAgentPage() {
             </div>
           </div>
 
-          <div>
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-sumi-faint">工作模式</p>
-            <div className="grid grid-cols-2 gap-1.5">
-              {WORKFLOW_ROUTES.map((route) => {
-                const selected = workflowRoute === route.value;
-                return (
-                  <button
-                    key={route.value}
-                    type="button"
-                    onClick={() => setWorkflowRoute(route.value)}
-                    disabled={sending || waitingForHuman}
-                    title={route.description}
-                    className={`rounded-md border px-2.5 py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${selected ? 'border-vermilion/50 bg-vermilion text-white' : 'border-paper-border bg-paper-base text-sumi-dim hover:border-sumi-faint/40 hover:text-sumi'}`}
-                  >
-                    {route.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
         </aside>
 
         {/* Main chat area */}
@@ -1033,7 +1003,7 @@ export default function MangaAgentPage() {
             </div>
             <div className="min-w-0">
               <div className="text-sm font-medium text-sumi">AI 对话</div>
-              <div className="text-[11px] text-sumi-faint">模式：{routeLabel(workflowRoute)}</div>
+              <div className="text-[11px] text-sumi-faint">漫画创作助手</div>
             </div>
           </div>
 
@@ -1072,7 +1042,6 @@ export default function MangaAgentPage() {
                           {executionIcon(latestExecutionEvent?.tone || (waitingForHuman ? 'waiting' : sending ? 'thinking' : 'neutral'), latestExecutionEvent?.icon || 'clock')}
                           {waitingForHuman ? '等待确认' : runStatus}
                         </span>
-                        <span className="rounded-full border border-paper-border bg-paper-base px-2.5 py-0.5 text-[11px] text-sumi-dim">模式 {routeLabel(workflowRoute)}</span>
                         {businessStatus && <span className="rounded-full border border-paper-border bg-paper-base px-2.5 py-0.5 text-[11px] text-sumi-dim">状态 {businessStatus}</span>}
                         {activeRequestId && <span className="text-[10px] text-sumi-faint font-mono">{formatRequestId(activeRequestId)}</span>}
                         {activeRequestId && (sending || waitingForHuman) && (

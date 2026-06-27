@@ -126,14 +126,21 @@ public class ArtVerseProperties {
     public static class Agent {
         private int runTimeoutSeconds = 180;
         private int staleRunningSeconds = 600;
-        private IntentClassification intentClassification = new IntentClassification();
-        private AgentCache cache = new AgentCache();
+        private int maxConcurrentRuns = 8;
 
-        @Data
-        public static class IntentClassification {
-            private boolean enabled = true;
-            private int timeoutSeconds = 8;
-        }
+        // Retry
+        private int maxRetries = 2;
+        private long retryMinBackoffMs = 1_000;
+        private long retryMaxBackoffMs = 10_000;
+        private double retryMultiplier = 2.0;
+
+        // Circuit breaker
+        private int circuitBreakerFailureThreshold = 5;
+        private int circuitBreakerWaitSeconds = 30;
+        private int circuitBreakerSlidingWindowSize = 20;
+        private int circuitBreakerSlowCallThresholdMs = 120_000;
+
+        private AgentCache cache = new AgentCache();
 
         @Data
         public static class AgentCache {
